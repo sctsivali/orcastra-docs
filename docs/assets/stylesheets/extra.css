@@ -1,0 +1,21 @@
+/* Custom styling for Orcastra Documentation */
+
+/* Variable table styling */
+.md-typeset table:not([class]) th {
+  min-width: 6rem;
+}
+
+/* Admonition custom colors */
+.md-typeset .admonition.save,
+.md-typeset details.save {
+  border-color: #ff9100;
+}
+.md-typeset .save > .admonition-title,
+.md-typeset .save > summary {
+  background-color: #ff910020;
+}
+
+/* Code block improvements */
+.md-typeset pre > code {
+  font-size: 0.82rem;
+}
