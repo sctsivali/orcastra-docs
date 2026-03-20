@@ -1,4 +1,4 @@
-# VM 4 — Orcastra Dashboard
+# VM 4 - Orcastra Dashboard
 
 **Specifications:** 4 vCPU, 8 GB RAM, 60 GB Storage
 
@@ -45,7 +45,7 @@ nano docker-compose.prod.yml
 
     ```yaml
     # ==========================================================================
-    # Orcastra Dashboard — Production Docker Compose
+    # Orcastra Dashboard - Production Docker Compose
     # ==========================================================================
     # USE THIS for on-prem deployment (pulls pre-built images from Docker Hub)
     # DO NOT use docker-compose.yml (that's for development/building from source)
@@ -562,7 +562,7 @@ LOG_LEVEL=INFO
 ```
 
 !!! warning "Placeholder Replacement"
-    Replace **all** `<...>` placeholders with actual values. The `OPENSEARCH_HOST` should be the **IP address only** — no `http://` prefix.
+    Replace **all** `<...>` placeholders with actual values. The `OPENSEARCH_HOST` should be the **IP address only** - no `http://` prefix.
 
 ---
 

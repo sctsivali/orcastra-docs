@@ -10,7 +10,7 @@ graph TB
         U[User]
     end
 
-    subgraph "VM 4 — Orcastra Dashboard"
+    subgraph "VM 4 - Orcastra Dashboard"
         FE[Frontend<br/>Next.js :4321]
         BE[Backend<br/>FastAPI :8765]
         PG[(PostgreSQL)]
@@ -18,18 +18,18 @@ graph TB
         FB1[Fluent Bit<br/>Sidecar]
     end
 
-    subgraph "VM 1 — Authentik"
+    subgraph "VM 1 - Authentik"
         AK[Authentik<br/>:9000]
         AK_PG[(PostgreSQL)]
         AK_RD[(Redis)]
     end
 
-    subgraph "VM 2 — Vault"
+    subgraph "VM 2 - Vault"
         VT[Vault<br/>:8200]
         FB2[Fluent Bit<br/>Native]
     end
 
-    subgraph "VM 3 — OpenSearch"
+    subgraph "VM 3 - OpenSearch"
         OS[OpenSearch<br/>:9200]
         OSD[Dashboards<br/>:5601]
     end
@@ -48,7 +48,7 @@ graph TB
 
 ## Component Responsibilities
 
-### VM 1 — Authentik (Identity Provider)
+### VM 1 - Authentik (Identity Provider)
 
 - **Role:** Single Sign-On (SSO) and identity management
 - **Protocol:** OAuth2/OpenID Connect
@@ -58,7 +58,7 @@ graph TB
     - API token issuance for automated group sync
 - **Technology:** Authentik (Docker), PostgreSQL, Redis
 
-### VM 2 — Vault (Secret Management)
+### VM 2 - Vault (Secret Management)
 
 - **Role:** Secret storage and PKI certificate authority
 - **Key Functions:**
@@ -67,7 +67,7 @@ graph TB
     - Audit logging forwarded to OpenSearch via Fluent Bit
 - **Technology:** HashiCorp Vault (native), Fluent Bit (native)
 
-### VM 3 — OpenSearch (Logging & Analytics)
+### VM 3 - OpenSearch (Logging & Analytics)
 
 - **Role:** Centralized log aggregation and dashboards
 - **Key Functions:**
@@ -76,7 +76,7 @@ graph TB
     - Index lifecycle management with retention policies
 - **Technology:** OpenSearch (Docker), OpenSearch Dashboards (Docker)
 
-### VM 4 — Orcastra Dashboard (Application)
+### VM 4 - Orcastra Dashboard (Application)
 
 - **Role:** The main web application and API backend
 - **Key Functions:**
@@ -163,8 +163,8 @@ graph LR
 
 | Role | Group | Access Level |
 |---|---|---|
-| **Admin** | `role_admin` | Full system-wide access — all clusters, users, settings |
-| **Partner** | `role_partner` | Cluster owner — manages own clusters, organizations, tenants |
-| **Tenant** | `role_tenant` | End user — access to assigned projects only |
+| **Admin** | `role_admin` | Full system-wide access - all clusters, users, settings |
+| **Partner** | `role_partner` | Cluster owner - manages own clusters, organizations, tenants |
+| **Tenant** | `role_tenant` | End user - access to assigned projects only |
 
 Each user belongs to exactly one role group in Authentik. If assigned to multiple groups, the highest-privilege role takes effect.

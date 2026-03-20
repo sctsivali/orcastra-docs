@@ -4,7 +4,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 
 ## Deployment Checklist
 
-### VM 1 — Authentik
+### VM 1 - Authentik
 
 - [ ] Install Docker
 - [ ] Deploy Authentik via `docker compose`
@@ -16,7 +16,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 - [ ] Create API token for group sync
 - [ ] **Save:** Client ID, Client Secret, API Token, Issuer URL
 
-### VM 2 — Vault
+### VM 2 - Vault
 
 - [ ] Install Vault (native package)
 - [ ] Configure listener on `0.0.0.0:8200` (TLS disabled for internal use)
@@ -29,7 +29,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 - [ ] Install Fluent Bit (native) to forward audit logs to VM 3
 - [ ] **Save:** Dashboard Token, Unseal Keys, Root Token
 
-### VM 3 — OpenSearch
+### VM 3 - OpenSearch
 
 - [ ] Install Docker
 - [ ] Generate passwords (admin, dashboards, fluent-bit)
@@ -40,7 +40,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 - [ ] Create Orcastra access and audit index templates
 - [ ] **Save:** Admin Password, Dashboards Password, Fluent Bit Password
 
-### VM 4 — Orcastra Dashboard
+### VM 4 - Orcastra Dashboard
 
 - [ ] Install Docker
 - [ ] Create configuration files (Fluent Bit, Docker Compose)

@@ -68,7 +68,7 @@ The browser is hitting an incorrect API URL.
 
 ---
 
-### "Connection Issue — Unable to Reach the Server" Banner
+### "Connection Issue - Unable to Reach the Server" Banner
 
 The frontend can reach Authentik (login works) but cannot reach the backend API.
 
@@ -164,8 +164,8 @@ curl -sk https://localhost:9200/_cluster/health?pretty \
   -u admin:<ADMIN_PASSWORD>
 ```
 
-- **Yellow:** Single-node cluster with replicas configured — expected for single-node deployments.
-- **Red:** Shard allocation failures — check disk space and container health.
+- **Yellow:** Single-node cluster with replicas configured - expected for single-node deployments.
+- **Red:** Shard allocation failures - check disk space and container health.
 
 ### Fluent Bit Cannot Write to OpenSearch
 

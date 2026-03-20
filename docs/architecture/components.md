@@ -4,7 +4,7 @@
 
 ```mermaid
 graph TB
-    subgraph VM1["VM 1 — Authentik"]
+    subgraph VM1["VM 1 - Authentik"]
         AUTH_SERVER[Authentik Server]
         AUTH_WORKER[Authentik Worker]
         AUTH_PG[(PostgreSQL)]
@@ -15,19 +15,19 @@ graph TB
         AUTH_WORKER --> AUTH_REDIS
     end
 
-    subgraph VM2["VM 2 — Vault"]
+    subgraph VM2["VM 2 - Vault"]
         VAULT[HashiCorp Vault]
         VAULT_FB[Fluent Bit]
         VAULT --> VAULT_FB
     end
 
-    subgraph VM3["VM 3 — OpenSearch"]
+    subgraph VM3["VM 3 - OpenSearch"]
         OS_NODE[OpenSearch Node]
         OS_DASH[OpenSearch Dashboards]
         OS_DASH --> OS_NODE
     end
 
-    subgraph VM4["VM 4 — Dashboard"]
+    subgraph VM4["VM 4 - Dashboard"]
         FE[Next.js Frontend]
         BE[FastAPI Backend]
         PG[(PostgreSQL)]
@@ -64,30 +64,30 @@ graph TB
 
 ## Service Inventory
 
-### VM 1 — Authentik
+### VM 1 - Authentik
 
 | Container | Image | Port | Purpose |
 |---|---|---|---|
 | `server` | `ghcr.io/goauthentik/server` | 9000 | OIDC Provider, Admin UI |
-| `worker` | `ghcr.io/goauthentik/server` | — | Background task processing |
+| `worker` | `ghcr.io/goauthentik/server` | - | Background task processing |
 | `postgresql` | `docker.io/library/postgres:16-alpine` | 5432 | Authentik data store |
 | `redis` | `docker.io/library/redis:alpine` | 6379 | Session cache, task queue |
 
-### VM 2 — Vault
+### VM 2 - Vault
 
 | Process | Package | Port | Purpose |
 |---|---|---|---|
 | `vault` | HashiCorp Vault (apt) | 8200 | Secret management, PKI CA |
-| `fluent-bit` | Fluent Bit (apt) | — | Vault audit log forwarding |
+| `fluent-bit` | Fluent Bit (apt) | - | Vault audit log forwarding |
 
-### VM 3 — OpenSearch
+### VM 3 - OpenSearch
 
 | Container | Image | Port | Purpose |
 |---|---|---|---|
 | `opensearch-node1` | `opensearchproject/opensearch:2.20.1` | 9200 | Search & analytics engine |
 | `opensearch-dashboards` | `opensearchproject/opensearch-dashboards:2.20.1` | 5601 | Visualization UI |
 
-### VM 4 — Orcastra Dashboard
+### VM 4 - Orcastra Dashboard
 
 | Container | Image | Port | Purpose |
 |---|---|---|---|

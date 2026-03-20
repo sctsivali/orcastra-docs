@@ -5,7 +5,7 @@ hide:
 
 # Orcastra Documentation
 
-**Operations center for multi-cluster LXD management, secret management, PKI, RBAC, and centralized logging.**
+**Operations center for multi-cluster management, secret management, Public Key Infrastructure, Role-Based Access Control, and centralized logging.**
 
 ---
 
@@ -75,8 +75,8 @@ The platform deploys across four virtual machines, each hosting a dedicated comp
 | Document | Description |
 |---|---|
 | [Prerequisites](getting-started/prerequisites.md) | Required infrastructure and accounts |
-| [VM 1 — Authentik](deployment/vm1-authentik.md) | SSO provider setup |
-| [VM 2 — Vault](deployment/vm2-vault.md) | Secret engine & PKI setup |
-| [VM 3 — OpenSearch](deployment/vm3-opensearch.md) | Log aggregation & dashboards |
-| [VM 4 — Dashboard](deployment/vm4-dashboard.md) | Application deployment |
+| [VM 1 - Authentik](deployment/vm1-authentik.md) | SSO provider setup |
+| [VM 2 - Vault](deployment/vm2-vault.md) | Secret engine & PKI setup |
+| [VM 3 - OpenSearch](deployment/vm3-opensearch.md) | Log aggregation & dashboards |
+| [VM 4 - Dashboard](deployment/vm4-dashboard.md) | Application deployment |
 | [Troubleshooting](operations/troubleshooting.md) | Common issues & fixes |

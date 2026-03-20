@@ -1,4 +1,4 @@
-# Domain Setup — Cloudflare Tunnel
+# Domain Setup - Cloudflare Tunnel
 
 !!! info "Optional"
     This step is optional. You can access the dashboard directly via IP:port. This guide enables custom domain access (e.g., `app.orcastra.io`) with automatic HTTPS via Cloudflare Tunnel.
@@ -12,7 +12,7 @@ Browser → https://sso.orcastra.io  → Cloudflare Edge → Tunnel → VM4 → 
 Browser → https://logs.orcastra.io → Cloudflare Edge → Tunnel → VM4 → VM3:5601
 ```
 
-Cloudflare Tunnel creates a secure outbound connection from your server to Cloudflare's edge — no open inbound ports needed. All traffic gets HTTPS automatically.
+Cloudflare Tunnel creates a secure outbound connection from your server to Cloudflare's edge - no open inbound ports needed. All traffic gets HTTPS automatically.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ Cloudflare Tunnel creates a secure outbound connection from your server to Cloud
 
 1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com) → **Networks** → **Tunnels**
 2. Click **Create a tunnel** → select **Cloudflared** → name it (e.g., `orcastra-production`)
-3. Copy the **install token** — you'll need it in the next step
+3. Copy the **install token** - you'll need it in the next step
 
 ---
 
@@ -72,7 +72,7 @@ In the Cloudflare Dashboard, go to your tunnel → **Public Hostname** tab. Add 
 In the Authentik admin panel (`https://sso.orcastra.io/if/admin/`):
 
 1. Go to **Applications** → **Providers** → **Orcastra Dashboard Provider**
-2. Edit **Redirect URIs/Origins** — add:
+2. Edit **Redirect URIs/Origins** - add:
    ```
    https://app.orcastra.io/api/auth/callback/authentik
    ```
@@ -101,7 +101,7 @@ NEXTAUTH_URL=https://app.orcastra.io
 CORS_ORIGINS=https://app.orcastra.io
 ```
 
-Leave all other values (VAULT_ADDR, DATABASE_URL, etc.) unchanged — they use internal IPs.
+Leave all other values (VAULT_ADDR, DATABASE_URL, etc.) unchanged - they use internal IPs.
 
 ---
 
@@ -128,4 +128,4 @@ The `entrypoint.sh` script automatically replaces `NEXT_PUBLIC_*` URLs on every 
     After connecting the domain, you can optionally close raw IP:port access by removing the LXD port forwards for ports `4321` and `8765`. Test domain-only access first before removing port forwards.
 
 !!! note "iptables Rules After Domain Setup"
-    With the domain setup, the frontend container resolves `sso.orcastra.io` via DNS → Cloudflare → tunnel → VM1:9000. The iptables rules from [VM 4 Step 8](../deployment/vm4-dashboard.md#step-8-fix-docker-to-authentik-connectivity) may no longer be needed. Test by removing the rules and restarting — if login still works, they're not needed.
+    With the domain setup, the frontend container resolves `sso.orcastra.io` via DNS → Cloudflare → tunnel → VM1:9000. The iptables rules from [VM 4 Step 8](../deployment/vm4-dashboard.md#step-8-fix-docker-to-authentik-connectivity) may no longer be needed. Test by removing the rules and restarting - if login still works, they're not needed.

@@ -1,4 +1,4 @@
-# VM 3 — OpenSearch (Logging)
+# VM 3 - OpenSearch (Logging)
 
 **Specifications:** 4 vCPU, 16 GB RAM, 100 GB Storage
 
@@ -40,8 +40,8 @@ echo "Dashboards (kibanaserver) password: $DASHBOARDS_PASS"
 ```
 
 !!! danger "Save Both Passwords"
-    - **OpenSearch admin password** — used for all admin API calls
-    - **Dashboards password** — used by OpenSearch Dashboards internally
+    - **OpenSearch admin password** - used for all admin API calls
+    - **Dashboards password** - used by OpenSearch Dashboards internally
 
 Create the `.env` file:
 
@@ -468,13 +468,13 @@ apt update && apt install git -y
 
 Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
 
-- **Orcastra Logs Overview** — Combined view of all log types
-- **Orcastra Access Logs** — HTTP request monitoring and latency tracking
-- **Orcastra Activity & Audit Logs** — Security compliance and user activity
-- **Vault Security Audit** — Vault operations and secret access patterns
+- **Orcastra Logs Overview** - Combined view of all log types
+- **Orcastra Access Logs** - HTTP request monitoring and latency tracking
+- **Orcastra Activity & Audit Logs** - Security compliance and user activity
+- **Vault Security Audit** - Vault operations and secret access patterns
 
 !!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline — download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-docs) or copy them from your deployment package under `config/opensearch-dashboards/`.
+    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-docs) or copy them from your deployment package under `config/opensearch-dashboards/`.
 
 Place the following files in `config/opensearch-dashboards/`:
 
@@ -776,11 +776,11 @@ After completing VM 3 setup, you should have the following values saved:
 
 | Value | Used On | Environment Variable (VM 4) |
 |---|---|---|
-| OpenSearch Admin Password | VM 3 (admin operations) | — |
-| Dashboards Password | VM 3 (internal user) | — |
+| OpenSearch Admin Password | VM 3 (admin operations) | - |
+| Dashboards Password | VM 3 (internal user) | - |
 | Fluent Bit Password | VM 2, VM 4 | `OPENSEARCH_PASSWORD` |
 | OpenSearch IP | VM 2, VM 4 | `OPENSEARCH_HOST` |
 
 ---
 
-**Next:** [VM 4 — Orcastra Dashboard](vm4-dashboard.md)
+**Next:** [VM 4 - Orcastra Dashboard](vm4-dashboard.md)

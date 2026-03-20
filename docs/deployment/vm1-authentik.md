@@ -1,4 +1,4 @@
-# VM 1 — Authentik (SSO)
+# VM 1 - Authentik (SSO)
 
 **Specifications:** 2 vCPU, 4 GB RAM, 40 GB Storage
 
@@ -57,7 +57,7 @@ docker compose up -d
 3. Click **Continue**
 
 !!! danger "Save This Password"
-    This is your `akadmin` password. Store it securely — you will need it for all admin operations.
+    This is your `akadmin` password. Store it securely - you will need it for all admin operations.
 
 ---
 
@@ -76,8 +76,8 @@ docker compose up -d
     | Name | `Orcastra Dashboard Provider` |
     | Authorization flow | `default-provider-authorization-implicit-consent` |
     | Client type | `Confidential` |
-    | Client ID | *(auto-generated — copy and save)* |
-    | Client Secret | *(auto-generated — copy and save)* |
+    | Client ID | *(auto-generated - copy and save)* |
+    | Client Secret | *(auto-generated - copy and save)* |
 
 6. Set **Redirect URIs/Origins** (one per line):
 
@@ -127,8 +127,8 @@ Orcastra uses Authentik groups for role-based access control (RBAC). Create thre
     | Group Name | Dashboard Role | Access Level |
     |---|---|---|
     | `role_admin` | Admin | Full system-wide access (all clusters, users, settings) |
-    | `role_partner` | Partner | Cluster owner — manages own clusters, organizations, tenants |
-    | `role_tenant` | Tenant | End user — access to assigned projects only |
+    | `role_partner` | Partner | Cluster owner - manages own clusters, organizations, tenants |
+    | `role_tenant` | Tenant | End user - access to assigned projects only |
 
 3. Assign `akadmin` to the `role_admin` group:
     - Click `role_admin` → **Users** tab → **Add existing user**
@@ -158,7 +158,7 @@ The API token enables the Dashboard backend to sync user groups from Authentik.
 4. Click **Create**, then click the **copy icon** to copy the token key
 
 !!! danger "Save This Token"
-    This is your `AUTHENTIK_API_TOKEN` — required in the `.env` file on VM 4.
+    This is your `AUTHENTIK_API_TOKEN` - required in the `.env` file on VM 4.
 
 ??? tip "Can't copy the token? (ClipboardItem error)"
     If you see "ClipboardItem is not defined":
@@ -192,7 +192,7 @@ After completing VM 1 setup, you should have the following values saved:
 
 | Value | Environment Variable (VM 4) | Example |
 |---|---|---|
-| Authentik admin password | — | *(your chosen password)* |
+| Authentik admin password | - | *(your chosen password)* |
 | Client ID | `AUTHENTIK_CLIENT_ID` | `abc123...` |
 | Client Secret | `AUTHENTIK_CLIENT_SECRET` | `def456...` |
 | API Token | `AUTHENTIK_API_TOKEN` | `ghi789...` |
@@ -220,4 +220,4 @@ If using LXD port forwarding to access services from outside the LXD network:
 
 ---
 
-**Next:** [VM 2 — Vault (Secrets)](vm2-vault.md)
+**Next:** [VM 2 - Vault (Secrets)](vm2-vault.md)
