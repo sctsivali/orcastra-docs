@@ -1,0 +1,147 @@
+# =============================================================================
+# Orcastra Documentation — MkDocs Configuration
+# =============================================================================
+# Built with MkDocs Material theme for ReadTheDocs hosting
+# Repository: https://github.com/sctsivali/orcastra-docs
+# =============================================================================
+
+site_name: Orcastra Documentation
+site_url: https://orcastra-docs.readthedocs.io/
+site_description: >-
+  Operations center dashboard for multi-cluster LXD management,
+  secret management, PKI, RBAC, and centralized logging.
+site_author: Orcastra Dev Team
+copyright: Copyright &copy; 2026 Orcastra
+
+repo_name: sctsivali/orcastra-docs
+repo_url: https://github.com/sctsivali/orcastra-docs
+
+# =============================================================================
+# Theme Configuration
+# =============================================================================
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+    admonition:
+      note: fontawesome/solid/note-sticky
+      warning: fontawesome/solid/triangle-exclamation
+      tip: fontawesome/solid/lightbulb
+      danger: fontawesome/solid/skull-crossbones
+
+# =============================================================================
+# Plugins
+# =============================================================================
+plugins:
+  - search
+
+# =============================================================================
+# Markdown Extensions
+# =============================================================================
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# =============================================================================
+# Extra Configuration
+# =============================================================================
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sctsivali/orcastra-docs
+  version:
+    provider: mike
+  generator: false
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+# =============================================================================
+# Navigation
+# =============================================================================
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/index.md
+      - Prerequisites: getting-started/prerequisites.md
+      - Architecture Overview: getting-started/architecture.md
+      - Quick Start: getting-started/quick-start.md
+  - Deployment:
+      - deployment/index.md
+      - VM 1 — Authentik (SSO): deployment/vm1-authentik.md
+      - VM 2 — Vault (Secrets): deployment/vm2-vault.md
+      - VM 3 — OpenSearch (Logging): deployment/vm3-opensearch.md
+      - VM 4 — Orcastra Dashboard: deployment/vm4-dashboard.md
+  - Operations:
+      - operations/index.md
+      - Domain Setup (Cloudflare): operations/domain-setup.md
+      - Networking & Connectivity: operations/networking.md
+      - Verification & Testing: operations/verification.md
+      - Troubleshooting: operations/troubleshooting.md
+  - Architecture:
+      - architecture/index.md
+      - System Components: architecture/components.md
+      - Security Model: architecture/security.md
+      - Logging Pipeline: architecture/logging.md
