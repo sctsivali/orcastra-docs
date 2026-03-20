@@ -8,7 +8,7 @@
 site_name: Orcastra Documentation
 site_url: https://orcastra.readthedocs.io/
 site_description: >-
-  Operations center dashboard for multi-cluster LXD management,
+  Operations center dashboard for multi-cluster management,
   secret management, PKI, RBAC, and centralized logging.
 site_author: Orcastra Dev Team
 copyright: Copyright &copy; 2026 Orcastra
