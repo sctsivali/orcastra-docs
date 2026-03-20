@@ -24,7 +24,7 @@ All LXD containers require the following security settings:
 3. Set **Nesting (Containers only)** → `Allow`
 4. Save changes
 
-!!! warning "VM 3 — Additional Host Configuration"
+!!! warning "VM 3 - Additional Host Configuration"
     The LXD **host server** (not the container) requires increased virtual memory mapping for OpenSearch:
 
     ```bash
@@ -60,7 +60,7 @@ All VMs require Docker with the Compose plugin. The Docker installation steps ar
 
 ## Accounts & Credentials
 
-During deployment, you will generate and collect the following credentials. **Keep them secure** — they are required across VMs.
+During deployment, you will generate and collect the following credentials. **Keep them secure** - they are required across VMs.
 
 | Credential | Generated On | Used On | Description |
 |---|---|---|---|
@@ -80,7 +80,7 @@ During deployment, you will generate and collect the following credentials. **Ke
 | Secret Key | VM 4 | VM 4 | Backend application secret |
 
 !!! danger "Credential Security"
-    Store all credentials in a secure password manager. Never commit them to version control. The deployment scripts generate strong random values — use them as-is.
+    Store all credentials in a secure password manager. Never commit them to version control. The deployment scripts generate strong random values - use them as-is.
 
 ## Optional Requirements
 

@@ -8,7 +8,7 @@ After deploying all four VMs, verify the complete system end-to-end.
 
 Confirm each VM's services are running:
 
-=== "VM 1 — Authentik"
+=== "VM 1 - Authentik"
 
     ```bash
     # On VM 1 (or via LXD host IP)
@@ -16,7 +16,7 @@ Confirm each VM's services are running:
     ```
     Should return HTML (the Authentik UI).
 
-=== "VM 2 — Vault"
+=== "VM 2 - Vault"
 
     ```bash
     export VAULT_ADDR='http://127.0.0.1:8200'
@@ -24,7 +24,7 @@ Confirm each VM's services are running:
     ```
     Verify: `Sealed = false`, `Initialized = true`.
 
-=== "VM 3 — OpenSearch"
+=== "VM 3 - OpenSearch"
 
     ```bash
     curl -sk https://localhost:9200 \
@@ -38,7 +38,7 @@ Confirm each VM's services are running:
     ```
     Should return OpenSearch Dashboards status.
 
-=== "VM 4 — Dashboard"
+=== "VM 4 - Dashboard"
 
     ```bash
     curl -s http://localhost:8765/health
@@ -54,7 +54,7 @@ Confirm each VM's services are running:
 
 ## End-to-End Login Flow
 
-This is the primary verification — it tests Authentik, the frontend, and the backend together.
+This is the primary verification - it tests Authentik, the frontend, and the backend together.
 
 1. Open browser: `https://app.orcastra.io` (or `http://<VM4_IP_OR_LXD_HOST_IP>:4321`)
 2. You should see the Orcastra login page
@@ -81,7 +81,7 @@ curl -s http://<VM4_IP>:8765/health | python3 -m json.tool
 docker compose -f docker-compose.prod.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-Expected output — all containers should be `Up` and `healthy`:
+Expected output - all containers should be `Up` and `healthy`:
 
 ```
 NAME                                STATUS                  PORTS

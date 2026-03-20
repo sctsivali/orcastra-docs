@@ -1,4 +1,4 @@
-# VM 2 — Vault (Secrets)
+# VM 2 - Vault (Secrets)
 
 **Specifications:** 2 vCPU, 2 GB RAM, 20 GB Storage
 
@@ -200,7 +200,7 @@ vault token create \
 ```
 
 !!! danger "Save the Token"
-    The output shows a `token` field starting with `hvs.` — this is your `VAULT_TOKEN` for the Dashboard `.env` on VM 4.
+    The output shows a `token` field starting with `hvs.` - this is your `VAULT_TOKEN` for the Dashboard `.env` on VM 4.
 
 ---
 
@@ -360,11 +360,11 @@ After completing VM 2 setup, you should have the following values saved:
 
 | Value | Environment Variable (VM 4) | Notes |
 |---|---|---|
-| 5 × Unseal Keys | — | Required after every Vault restart |
-| Root Token | — | Admin access (store securely) |
+| 5 × Unseal Keys | - | Required after every Vault restart |
+| Root Token | - | Admin access (store securely) |
 | Dashboard Token (`hvs.…`) | `VAULT_TOKEN` | Scoped to `orcastra-policy` |
 | Vault Address | `VAULT_ADDR` | `http://<VM2_IP>:8200` |
 
 ---
 
-**Next:** [VM 3 — OpenSearch (Logging)](vm3-opensearch.md)
+**Next:** [VM 3 - OpenSearch (Logging)](vm3-opensearch.md)

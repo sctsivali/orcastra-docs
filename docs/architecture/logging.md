@@ -17,7 +17,7 @@ Orcastra implements a structured logging pipeline that separates logs into three
 
 ```mermaid
 graph LR
-    subgraph VM4["VM 4 — Dashboard"]
+    subgraph VM4["VM 4 - Dashboard"]
         BE[Backend stdout]
         FE[Frontend stdout]
         DOCKER[Docker Log Driver]
@@ -27,13 +27,13 @@ graph LR
         DOCKER --> FB4
     end
 
-    subgraph VM2["VM 2 — Vault"]
+    subgraph VM2["VM 2 - Vault"]
         VAULT[Vault Audit Log]
         FB2[Fluent Bit]
         VAULT -->|/var/log/vault/audit.log| FB2
     end
 
-    subgraph VM3["VM 3 — OpenSearch"]
+    subgraph VM3["VM 3 - OpenSearch"]
         OS[OpenSearch]
         OSD[OpenSearch Dashboards]
         OS --> OSD
@@ -47,7 +47,7 @@ graph LR
 
 ## Fluent Bit Processing
 
-### VM 4 — Dashboard Sidecar
+### VM 4 - Dashboard Sidecar
 
 The Fluent Bit container on VM 4 reads Docker container logs and routes them:
 
@@ -56,16 +56,16 @@ Docker container stdout → /var/lib/docker/containers/*/*.log
                         ↓
                    [INPUT: tail]
                         ↓
-                   [FILTER: nest] — lift nested "log" field
+                   [FILTER: nest] - lift nested "log" field
                         ↓
-                   [FILTER: modify] — add environment, cluster, collector tags
+                   [FILTER: modify] - add environment, cluster, collector tags
                         ↓
-                   [FILTER: rewrite_tag] — route by log_type:
+                   [FILTER: rewrite_tag] - route by log_type:
                         ├── log_type=access → tag: log.access
                         ├── log_type=audit  → tag: log.audit
                         └── level=*         → tag: log.app
                         ↓
-                   [OUTPUT: opensearch] — write to OpenSearch indices
+                   [OUTPUT: opensearch] - write to OpenSearch indices
 ```
 
 ### Tag-Based Routing
@@ -77,7 +77,7 @@ Docker container stdout → /var/lib/docker/containers/*/*.log
 | `level` | any | `log.app` | `orcastra-app-YYYY.MM.DD` |
 | `message` | any (fallback) | `log.app` | `orcastra-app-YYYY.MM.DD` |
 
-### VM 2 — Vault Log Forwarding
+### VM 2 - Vault Log Forwarding
 
 Fluent Bit on VM 2 is installed as a system service (not Docker). It tails the Vault audit log file and forwards each entry to OpenSearch.
 
@@ -89,9 +89,9 @@ Fluent Bit on VM 2 is installed as a system service (not Docker). It tails the V
 
 Three index templates are configured on VM 3 to define field mappings:
 
-- **`orcastra-access-template`** — Maps HTTP fields: `method`, `path`, `status_code`, `latency_ms`, `client_ip`, `user_agent`
-- **`orcastra-audit-template`** — Maps audit fields: `event_type`, `action`, `actor`, `resource_type`, `resource_id`, `result`
-- **`vault-audit-template`** — Maps Vault fields: `type`, `auth.client_token`, `request.operation`, `request.path`
+- **`orcastra-access-template`** - Maps HTTP fields: `method`, `path`, `status_code`, `latency_ms`, `client_ip`, `user_agent`
+- **`orcastra-audit-template`** - Maps audit fields: `event_type`, `action`, `actor`, `resource_type`, `resource_id`, `result`
+- **`vault-audit-template`** - Maps Vault fields: `type`, `auth.client_token`, `request.operation`, `request.path`
 
 ### ISM (Index State Management) Policies
 
@@ -163,7 +163,7 @@ Pre-built OpenSearch Dashboards are imported during VM 3 setup:
 
 | Dashboard | Description |
 |---|---|
-| Access Logs | HTTP request analytics — status codes, latency, top endpoints |
-| Audit Logs | Security event timeline — user actions, RBAC changes |
+| Access Logs | HTTP request analytics - status codes, latency, top endpoints |
+| Audit Logs | Security event timeline - user actions, RBAC changes |
 | Logs Overview | Combined view across all log types |
-| Vault Audit | Vault API operations — secret access, authentication events |
+| Vault Audit | Vault API operations - secret access, authentication events |

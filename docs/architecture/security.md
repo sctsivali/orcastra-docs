@@ -1,6 +1,6 @@
 # Security Architecture
 
-## Authentication — Authentik OIDC
+## Authentication - Authentik OIDC
 
 Orcastra uses Authentik as a centralized identity provider via the OpenID Connect (OIDC) protocol.
 
@@ -15,14 +15,14 @@ Orcastra uses Authentik as a centralized identity provider via the OpenID Connec
 
 The backend verifies:
 
-- **Signature** — via Authentik's JWKS (JSON Web Key Set) endpoint
-- **Audience** — must match `AUTHENTIK_CLIENT_ID`
-- **Issuer** — must match `AUTHENTIK_ISSUER`
-- **Expiration** — rejects expired tokens
+- **Signature** - via Authentik's JWKS (JSON Web Key Set) endpoint
+- **Audience** - must match `AUTHENTIK_CLIENT_ID`
+- **Issuer** - must match `AUTHENTIK_ISSUER`
+- **Expiration** - rejects expired tokens
 
 ---
 
-## Authorization — Role-Based Access Control
+## Authorization - Role-Based Access Control
 
 Three Authentik groups map to application roles:
 
@@ -36,7 +36,7 @@ Groups are assigned in the Authentik admin panel and passed to the application v
 
 ---
 
-## Secrets Management — HashiCorp Vault
+## Secrets Management - HashiCorp Vault
 
 ### Secret Engines
 
@@ -51,11 +51,11 @@ Groups are assigned in the Authentik admin panel and passed to the application v
 The backend uses a scoped Vault token with the `orcastra-dashboard` policy:
 
 ```hcl
-# KV v2 — read/write application secrets
+# KV v2 - read/write application secrets
 path "secret/data/*"     { capabilities = ["create", "read", "update", "delete", "list"] }
 path "secret/metadata/*" { capabilities = ["list", "read", "delete"] }
 
-# PKI — issue and manage certificates
+# PKI - issue and manage certificates
 path "pki_int/issue/lxd" { capabilities = ["create", "update"] }
 path "pki_int/certs"     { capabilities = ["list"] }
 path "pki_int/revoke"    { capabilities = ["create", "update"] }

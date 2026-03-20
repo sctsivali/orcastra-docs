@@ -1,5 +1,5 @@
 # =============================================================================
-# Orcastra Documentation — MkDocs Configuration
+# Orcastra Documentation - MkDocs Configuration
 # =============================================================================
 # Built with MkDocs Material theme for ReadTheDocs hosting
 # Repository: https://github.com/sctsivali/orcastra-docs
@@ -8,8 +8,8 @@
 site_name: Orcastra Documentation
 site_url: https://orcastra.readthedocs.io/
 site_description: >-
-  Operations center dashboard for multi-cluster management,
-  secret management, PKI, RBAC, and centralized logging.
+  Operations center for multi-cluster management,
+  secret management, Public Key Infrastructure, Role-Based Access Control, and centralized logging.
 site_author: Orcastra Dev Team
 copyright: Copyright &copy; 2026 Orcastra
 
@@ -21,6 +21,7 @@ repo_url: https://github.com/sctsivali/orcastra-docs
 # =============================================================================
 theme:
   name: material
+  custom_dir: overrides
   language: en
   features:
     - navigation.tabs
@@ -132,10 +133,10 @@ nav:
       - Quick Start: getting-started/quick-start.md
   - Deployment:
       - deployment/index.md
-      - VM 1 — Authentik (SSO): deployment/vm1-authentik.md
-      - VM 2 — Vault (Secrets): deployment/vm2-vault.md
-      - VM 3 — OpenSearch (Logging): deployment/vm3-opensearch.md
-      - VM 4 — Orcastra Dashboard: deployment/vm4-dashboard.md
+      - VM 1 - Authentik (SSO): deployment/vm1-authentik.md
+      - VM 2 - Vault (Secrets): deployment/vm2-vault.md
+      - VM 3 - OpenSearch (Logging): deployment/vm3-opensearch.md
+      - VM 4 - Orcastra Dashboard: deployment/vm4-dashboard.md
   - Operations:
       - operations/index.md
       - Domain Setup (Cloudflare): operations/domain-setup.md

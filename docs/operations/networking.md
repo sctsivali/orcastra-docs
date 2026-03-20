@@ -41,7 +41,7 @@ Each VM instance requires the following LXD security settings:
 
 ## Docker Network Routing (VM 4)
 
-Docker containers on VM 4 cannot directly reach LXD port-forwarded IPs. This is because Docker's bridge network doesn't know how to route to the LXD host IP. See [VM 4 — Step 8](../deployment/vm4-dashboard.md#step-8-fix-docker-to-authentik-connectivity) for the iptables DNAT rules required.
+Docker containers on VM 4 cannot directly reach LXD port-forwarded IPs. This is because Docker's bridge network doesn't know how to route to the LXD host IP. See [VM 4 - Step 8](../deployment/vm4-dashboard.md#step-8-fix-docker-to-authentik-connectivity) for the iptables DNAT rules required.
 
 ### Summary of Required Routes
 
@@ -67,7 +67,7 @@ Docker containers (VM4) → LXD Host IP:8200 → VM2 Private IP:8200  (Vault)
 
 ### Internal-Only Ports
 
-These ports are **not** forwarded externally — they are used only within their respective Docker networks:
+These ports are **not** forwarded externally - they are used only within their respective Docker networks:
 
 | Port | Service | VM |
 |---|---|---|
