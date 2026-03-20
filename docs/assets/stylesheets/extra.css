@@ -20,12 +20,12 @@
   font-size: 0.82rem;
 }
 
-/* Logo swap: black logo on light theme, white logo on dark theme */
+/* Logo swap: white logo on light theme (header is dark), black logo on dark theme */
 [data-md-color-scheme="default"] .md-header__button.md-logo img,
 [data-md-color-scheme="default"] .md-nav__button.md-logo img {
-  content: url('../images/orca-logo-black.png');
+  content: url('../images/orca-logo-white.png');
 }
 [data-md-color-scheme="slate"] .md-header__button.md-logo img,
 [data-md-color-scheme="slate"] .md-nav__button.md-logo img {
-  content: url('../images/orca-logo-white.png');
+  content: url('../images/orca-logo-black.png');
 }
