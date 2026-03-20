@@ -6,7 +6,7 @@
 # =============================================================================
 
 site_name: Orcastra Documentation
-site_url: https://orcastra-docs.readthedocs.io/
+site_url: https://orcastra.readthedocs.io/
 site_description: >-
   Operations center dashboard for multi-cluster LXD management,
   secret management, PKI, RBAC, and centralized logging.
@@ -49,6 +49,8 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  logo: assets/images/orca-logo-black.png
+  favicon: assets/images/orca-logo-black.png
   icon:
     repo: fontawesome/brands/github
     admonition:
