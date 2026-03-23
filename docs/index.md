@@ -5,7 +5,7 @@ hide:
 
 # Orcastra Documentation
 
-**Operations center for multi-cluster management, secret management, Public Key Infrastructure, Role-Based Access Control, and centralized logging.**
+**Operations center for multi-cluster management, secret management, public key infrastructure, role-based access control, and centralized logging.**
 
 ---
 

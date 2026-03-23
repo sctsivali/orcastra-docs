@@ -1,5 +1,17 @@
 /* Custom styling for Orcastra Documentation */
 
+/* Custom primary color: soft dark (not pure black) */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #2d2d2d;
+  --md-primary-fg-color--light: #404040;
+  --md-primary-fg-color--dark: #1a1a1a;
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #2d2d2d;
+  --md-primary-fg-color--light: #404040;
+  --md-primary-fg-color--dark: #1a1a1a;
+}
+
 /* Variable table styling */
 .md-typeset table:not([class]) th {
   min-width: 6rem;
@@ -18,14 +30,4 @@
 /* Code block improvements */
 .md-typeset pre > code {
   font-size: 0.82rem;
-}
-
-/* Logo swap: white logo on light theme (header is dark), black logo on dark theme */
-[data-md-color-scheme="default"] .md-header__button.md-logo img,
-[data-md-color-scheme="default"] .md-nav__button.md-logo img {
-  content: url('../images/orca-logo-white.png');
-}
-[data-md-color-scheme="slate"] .md-header__button.md-logo img,
-[data-md-color-scheme="slate"] .md-nav__button.md-logo img {
-  content: url('../images/orca-logo-black.png');
 }
