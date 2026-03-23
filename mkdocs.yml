@@ -9,12 +9,13 @@ site_name: Orcastra Documentation
 site_url: https://orcastra.readthedocs.io/
 site_description: >-
   Operations center for multi-cluster management,
-  secret management, Public Key Infrastructure, Role-Based Access Control, and centralized logging.
+  secret management, public key infrastructure, role-based access control, and centralized logging.
 site_author: Orcastra Dev Team
 copyright: Copyright &copy; 2026 Orcastra
 
 repo_name: sctsivali/orcastra-docs
 repo_url: https://github.com/sctsivali/orcastra-docs
+edit_uri: edit/main/docs/
 
 # =============================================================================
 # Theme Configuration
@@ -39,19 +40,19 @@ theme:
     - content.code.annotate
   palette:
     - scheme: default
-      primary: indigo
-      accent: cyan
+      primary: custom
+      accent: deep purple
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: cyan
+      primary: custom
+      accent: deep purple
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  logo: assets/images/orca-logo-white.png
-  favicon: assets/images/orca-logo-black.png
+  logo: assets/images/orca.svg
+  favicon: assets/images/orca.svg
   icon:
     repo: fontawesome/brands/github
     admonition:

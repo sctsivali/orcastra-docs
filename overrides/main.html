@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 
 {% block extrahead %}
-  <link rel="icon" href="{{ 'assets/images/orca-logo-black.png' | url }}" media="(prefers-color-scheme: light)">
-  <link rel="icon" href="{{ 'assets/images/orca-logo-white.png' | url }}" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/svg+xml" href="{{ 'assets/images/orca.svg' | url }}">
+{% endblock %}
+
+{% block content %}
+  {{ super() }}
+  <div class="md-feedback" style="margin-top: 2rem; padding: 1rem 0; border-top: 1px solid var(--md-default-fg-color--lightest);">
+    <p style="font-size: 0.8rem; color: var(--md-default-fg-color--light);">
+      Found an issue or have a suggestion?
+      <a href="https://github.com/sctsivali/orcastra-docs/issues/new" target="_blank" rel="noopener" style="color: var(--md-accent-fg-color); font-weight: 600;">
+        Open an issue on GitHub &rarr;
+      </a>
+    </p>
+  </div>
 {% endblock %}
