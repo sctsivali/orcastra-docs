@@ -104,7 +104,7 @@ nano docker-compose.prod.yml
 
       # Backend API (port: 8765)
       backend:
-        image: svlct/orcastra-dashboard:backend-${APP_VERSION:-1.0.0-RC2}
+        image: svlct/orcastra-dashboard:backend-${APP_VERSION:-latest}
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-backend
         restart: always
         ports:
@@ -112,8 +112,8 @@ nano docker-compose.prod.yml
         env_file:
           - .env
         environment:
-          - APP_VERSION=${APP_VERSION:-1.0.0-RC2}
-          - API_VERSION=${API_VERSION:-1.0.0-RC2}
+          - APP_VERSION=${APP_VERSION:-latest}
+          - API_VERSION=${API_VERSION:-latest}
           - DEBUG=${DEBUG:-false}
           - DATABASE_URL=${DATABASE_URL}
           - AUTH_ENABLED=${AUTH_ENABLED:-true}
@@ -148,7 +148,7 @@ nano docker-compose.prod.yml
 
       # Frontend (port: 4321)
       frontend:
-        image: svlct/orcastra-dashboard:frontend-${APP_VERSION:-1.0.0-RC2}
+        image: svlct/orcastra-dashboard:frontend-${APP_VERSION:-latest}
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-frontend
         restart: always
         ports:
@@ -520,8 +520,8 @@ nano .env
 
 ```ini
 # === Version ===
-APP_VERSION=1.0.0-RC2
-API_VERSION=1.0.0-RC2
+APP_VERSION=latest
+API_VERSION=latest
 CONTAINER_PREFIX=orcastra-dashboard
 
 # === PostgreSQL ===
