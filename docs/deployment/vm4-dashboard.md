@@ -104,7 +104,7 @@ nano docker-compose.prod.yml
 
       # Backend API (port: 8765)
       backend:
-        image: svlct/orcastra-dashboard:backend-${APP_VERSION:-1.0.0-RC1}
+        image: svlct/orcastra-dashboard:backend-${APP_VERSION:-1.0.0-RC2}
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-backend
         restart: always
         ports:
@@ -112,8 +112,8 @@ nano docker-compose.prod.yml
         env_file:
           - .env
         environment:
-          - APP_VERSION=${APP_VERSION:-1.0.0-RC1}
-          - API_VERSION=${API_VERSION:-1.0.0-RC1}
+          - APP_VERSION=${APP_VERSION:-1.0.0-RC2}
+          - API_VERSION=${API_VERSION:-1.0.0-RC2}
           - DEBUG=${DEBUG:-false}
           - DATABASE_URL=${DATABASE_URL}
           - AUTH_ENABLED=${AUTH_ENABLED:-true}
@@ -148,7 +148,7 @@ nano docker-compose.prod.yml
 
       # Frontend (port: 4321)
       frontend:
-        image: svlct/orcastra-dashboard:frontend-${APP_VERSION:-1.0.0-RC1}
+        image: svlct/orcastra-dashboard:frontend-${APP_VERSION:-1.0.0-RC2}
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-frontend
         restart: always
         ports:
@@ -156,6 +156,7 @@ nano docker-compose.prod.yml
         environment:
           - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           - NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL=${NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL}
+          - INTERNAL_BACKEND_URL=http://backend:4050
           - AUTHENTIK_ISSUER=${AUTHENTIK_ISSUER}
           - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
           - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
@@ -168,8 +169,7 @@ nano docker-compose.prod.yml
           backend:
             condition: service_healthy
         healthcheck:
-          test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
-            "http://127.0.0.1:2025/api/auth/csrf"]
+          test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:2025"]
           interval: 30s
           timeout: 10s
           retries: 3
@@ -237,10 +237,16 @@ Create `config/fluent-bit/fluent-bit.conf`:
         HTTP_Listen        0.0.0.0
         HTTP_Port          2020
         Health_Check       On
-        storage.path       /fluent-bit/data/
-        storage.sync       normal
-        storage.checksum   off
-        storage.backlog.mem_limit 50M
+        # Mark container unhealthy when shipping bursts errors / failed retries.
+        HC_Errors_Count    5
+        HC_Retry_Failure_Count  5
+        HC_Period          60
+        # Filesystem buffering sized for multi-day OpenSearch outages.
+        storage.path             /fluent-bit/data/
+        storage.sync             normal
+        storage.checksum         off
+        storage.max_chunks_up    256
+        storage.backlog.mem_limit 512M
 
     [INPUT]
         Name              tail
@@ -263,6 +269,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Tag               forward.raw
         Buffer_Chunk_Size 1M
         Buffer_Max_Size   6M
+        storage.type      filesystem
 
     [FILTER]
         Name              nest
@@ -329,11 +336,15 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Suppress_Type_Name On
         tls               On
         tls.verify        Off
+        net.connect_timeout       10
+        net.keepalive             on
+        net.keepalive_idle_timeout 30
         Logstash_Format   On
         Logstash_Prefix   orcastra-access
         Logstash_DateFormat %Y.%m.%d
-        Retry_Limit       5
+        Retry_Limit       no_limits
         Buffer_Size       10MB
+        storage.total_limit_size  2G
         Trace_Error       On
         Replace_Dots      On
         Write_Operation   create
@@ -350,11 +361,16 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Suppress_Type_Name On
         tls               On
         tls.verify        Off
+        net.connect_timeout       10
+        net.keepalive             on
+        net.keepalive_idle_timeout 30
         Logstash_Format   On
         Logstash_Prefix   orcastra-audit
         Logstash_DateFormat %Y.%m.%d
-        Retry_Limit       10
+        # Audit logs MUST NOT be dropped (compliance) - unlimited retries.
+        Retry_Limit       no_limits
         Buffer_Size       10MB
+        storage.total_limit_size  8G
         Trace_Error       On
         Replace_Dots      On
         Write_Operation   create
@@ -371,11 +387,15 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Suppress_Type_Name On
         tls               On
         tls.verify        Off
+        net.connect_timeout       10
+        net.keepalive             on
+        net.keepalive_idle_timeout 30
         Logstash_Format   On
         Logstash_Prefix   orcastra-app
         Logstash_DateFormat %Y.%m.%d
-        Retry_Limit       5
+        Retry_Limit       no_limits
         Buffer_Size       10MB
+        storage.total_limit_size  4G
         Trace_Error       On
         Replace_Dots      On
         Generate_ID       On
@@ -500,8 +520,8 @@ nano .env
 
 ```ini
 # === Version ===
-APP_VERSION=1.0.0-RC1
-API_VERSION=1.0.0-RC1
+APP_VERSION=1.0.0-RC2
+API_VERSION=1.0.0-RC2
 CONTAINER_PREFIX=orcastra-dashboard
 
 # === PostgreSQL ===
@@ -519,6 +539,7 @@ DEBUG=false
 # === Frontend (port: 4321) ===
 FRONTEND_PORT=4321
 NEXT_PUBLIC_API_URL=http://<VM4_IP>:8765
+INTERNAL_BACKEND_URL=http://backend:4050
 
 # === Vault (VM 2) ===
 VAULT_ENABLED=true
@@ -665,6 +686,62 @@ docker compose -f docker-compose.prod.yml restart frontend backend
 
 !!! info "NEXT_PUBLIC_* Variables"
     The Docker image uses a runtime entrypoint script (`entrypoint.sh`) that automatically replaces placeholder URLs with real values from your `.env` file on every container start. No manual patching or image rebuilding needed.
+
+---
+
+## Troubleshooting: API Key Create Returns HTTP 503
+
+If **Settings -> Integrations -> Create API Key** returns `HTTP 503`, verify the Vault policy and token permissions.
+
+### Symptom
+
+- Frontend toast: `Failed to create API key - HTTP 503`
+- Backend logs may show Vault access failure on `secret/metadata/integrations/api_keys`
+
+### Root Cause
+
+The Dashboard Vault token is valid, but policy lacks one or both integrations paths:
+
+- `secret/data/integrations/*`
+- `secret/metadata/integrations/*`
+
+### Validate from Dashboard VM (Backend Container)
+
+```bash
+docker exec orcastra-dashboard-backend python -c "
+from app.core.config import get_settings
+s = get_settings()
+print('vault_enabled:', s.vault_enabled)
+print('vault_addr:', s.vault_addr)
+print('vault_token_set:', bool(s.vault_token))
+"
+```
+
+```bash
+docker exec orcastra-dashboard-backend python -c "
+from app.core.vault_client import get_vault_client
+from app.core.config import get_settings
+s = get_settings()
+vc = get_vault_client(s.vault_addr, s.vault_token)
+print(vc.vault_list('secret/metadata/integrations/api_keys'))
+"
+```
+
+If this returns `403 Client Error: Forbidden`, update policy on VM2 (Vault) per [VM 2 guide](vm2-vault.md#step-5-create-policy-and-token).
+
+### Expected Healthy State
+
+This command should not return 403:
+
+```bash
+vault kv list secret/integrations/api_keys
+```
+
+First-time setup usually returns:
+
+```text
+No value found at secret/metadata/integrations/api_keys
+```
 
 ---
 

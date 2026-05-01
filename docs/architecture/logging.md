@@ -81,6 +81,21 @@ Docker container stdout → /var/lib/docker/containers/*/*.log
 
 Fluent Bit on VM 2 is installed as a system service (not Docker). It tails the Vault audit log file and forwards each entry to OpenSearch.
 
+### Reliability and Backpressure
+
+Fluent Bit is configured for enterprise-grade durability so multi-day OpenSearch outages do not silently drop logs:
+
+| Setting | Value | Why |
+|---|---|---|
+| `Retry_Limit` | `no_limits` (all outputs) | Audit logs must never be dropped (compliance); access/app inherit the same policy. |
+| `storage.type filesystem` (per input) | enabled | Buffered chunks survive container restarts. |
+| `storage.backlog.mem_limit` | `512M` | Headroom for in-flight retries during transient slowness. |
+| `storage.total_limit_size` (per output) | audit `8G`, app `4G`, access `2G` | Per-stream disk backlog ceiling — audit gets the largest budget. |
+| `net.connect_timeout` / `net.keepalive` | `10s` / on | Detect stalled OpenSearch connections quickly. |
+| `HC_Errors_Count` / `HC_Retry_Failure_Count` | `5` over `60s` | Fluent Bit `/api/v1/health` flips red on shipping failures — Docker marks the container unhealthy and restarts it. |
+
+The healthcheck script `scripts/logging_healthcheck.sh` (in `orcastra-dashboard`) probes both ends of the pipeline and returns standard exit codes for cron + alerting integration. See [Operations → Troubleshooting](../operations/troubleshooting.md#fluent-bit-cannot-write-to-opensearch).
+
 ---
 
 ## OpenSearch Index Management
@@ -141,7 +156,16 @@ Automatic lifecycle management for each index type:
 | User | Role | Purpose |
 |---|---|---|
 | `admin` | All access | Administrative operations, dashboard import |
-| `fluentbit` | `fluentbit_writer` | Write-only access to `orcastra-*` and `vault-audit-*` indices |
+| `fluentbit` | `log_writer` | Write-only access to `orcastra-*` and `vault-audit-*` indices |
+| `audit_viewer` | `audit_reader` | Read-only access to audit indices |
+| `kibanaserver` | (built-in) | OpenSearch Dashboards internal user |
+
+!!! warning "Per-user unique bcrypt hashes"
+    Every internal user MUST have a unique bcrypt hash. The repository ships
+    `infrastructure/opensearch/scripts/generate_internal_users.sh` which reads
+    distinct passwords from environment variables and refuses duplicates.
+    `deploy.sh` fails fast if any `__REPLACE_ME_*__` placeholder remains in
+    `internal_users.yml`.
 
 ### Fluent Bit Writer Role
 
