@@ -233,7 +233,25 @@ EOF
 ### Internal Users
 
 !!! warning "Generate Unique Password Hashes"
-    Each user must have a unique bcrypt hash. Generate hashes with:
+    Each user must have a **unique** bcrypt hash. Reusing the same hash across
+    multiple users is a critical security violation: any compromised credential
+    grants access to every account that shares the hash.
+
+    **Recommended (automated):** Use the generator shipped with the repo. It
+    refuses duplicate passwords and writes `internal_users.yml` with `mode 600`:
+
+    ```bash
+    # From the orcastra-dashboard repo
+    export ADMIN_PASSWORD=...        FLUENTBIT_PASSWORD=...
+    export AUDIT_VIEWER_PASSWORD=... KIBANASERVER_PASSWORD=...
+    ./infrastructure/opensearch/scripts/generate_internal_users.sh
+    ```
+
+    The deployment script (`infrastructure/opensearch/deploy.sh`) calls this
+    generator automatically and fails fast if any `__REPLACE_ME_*__`
+    placeholder remains in `internal_users.yml`.
+
+    **Manual hash generation (if needed):**
 
     ```bash
     # Option 1: Using OpenSearch container
