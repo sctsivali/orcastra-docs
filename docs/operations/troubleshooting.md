@@ -169,14 +169,120 @@ curl -sk https://localhost:9200/_cluster/health?pretty \
 
 ### Fluent Bit Cannot Write to OpenSearch
 
-**Quick check (recommended) — run the bundled healthcheck:**
+**Quick check (recommended) — create a local helper script and run it:**
 
 ```bash
+cat > /usr/local/bin/orcastra-logging-healthcheck <<'EOF'
+#!/bin/bash
+set -uo pipefail
+
+RED='\033[0;31m'; YEL='\033[1;33m'; GRN='\033[0;32m'; BLU='\033[0;34m'; NC='\033[0m'
+WORST=0
+update_worst() { (( $1 > WORST )) && WORST=$1; }
+
+ok()    { echo -e "${GRN}[ OK ]${NC} $*"; }
+warn()  { echo -e "${YEL}[WARN]${NC} $*"; update_worst 1; }
+crit()  { echo -e "${RED}[CRIT]${NC} $*"; update_worst 2; }
+info()  { echo -e "${BLU}[INFO]${NC} $*"; }
+section() { echo ""; echo -e "${BLU}=== $* ===${NC}"; }
+
+check_fluentbit() {
+    section "Fluent Bit (log shipper)"
+    local cname="${FLUENTBIT_CONTAINER:-orcastra-dashboard-fluent-bit}"
+    if ! docker ps --format '{{.Names}}' | grep -qx "$cname"; then
+        crit "container '$cname' is not running"
+        return
+    fi
+    ok "container '$cname' running"
+
+    if docker exec "$cname" curl -sf http://127.0.0.1:2020/api/v1/health >/dev/null; then
+        ok "Fluent Bit /api/v1/health = ok"
+    else
+        crit "Fluent Bit health endpoint returns failure"
+    fi
+
+    local metrics errs retries dropped
+    metrics=$(docker exec "$cname" curl -sf http://127.0.0.1:2020/api/v1/metrics/prometheus 2>/dev/null || true)
+    if [ -n "$metrics" ]; then
+        errs=$(echo "$metrics" | awk '/^fluentbit_output_errors_total/ {s+=$2} END{print s+0}')
+        retries=$(echo "$metrics" | awk '/^fluentbit_output_retries_total/ {s+=$2} END{print s+0}')
+        dropped=$(echo "$metrics" | awk '/^fluentbit_output_retries_failed_total/ {s+=$2} END{print s+0}')
+        info "output errors=$errs retries=$retries retries_failed=$dropped"
+        (( dropped > 0 )) && crit "Fluent Bit has dropped records"
+        (( errs > 0 )) && warn "Fluent Bit output errors > 0"
+    fi
+}
+
+check_opensearch() {
+    section "OpenSearch (log store)"
+    local pwd="${OPENSEARCH_ADMIN_PASSWORD:-}"
+    local host="${OPENSEARCH_HOST:-localhost}"
+    local port="${OPENSEARCH_PORT:-9200}"
+    if [ -z "$pwd" ]; then
+        crit "OPENSEARCH_ADMIN_PASSWORD is required"
+        return
+    fi
+
+    local base="https://$host:$port"
+    local health_json status today latest hits
+    health_json=$(curl -sk -u "admin:$pwd" "$base/_cluster/health" || true)
+    if [ -z "$health_json" ] || echo "$health_json" | grep -q "Unauthorized"; then
+        crit "cannot authenticate to OpenSearch"
+        return
+    fi
+
+    status=$(echo "$health_json" | grep -o '"status" *: *"[^"]*"' | cut -d'"' -f4)
+    case "$status" in
+        green) ok "cluster status: green" ;;
+        yellow) warn "cluster status: yellow (expected on single-node with replicas)" ;;
+        red) crit "cluster status: red" ;;
+        *) crit "cluster status unknown: $status" ;;
+    esac
+
+    today=$(date -u +%Y.%m.%d)
+    for prefix in orcastra-access orcastra-audit orcastra-app vault-audit; do
+        latest=$(curl -sk -u "admin:$pwd" "$base/_cat/indices/${prefix}-*?h=index&s=index:desc" | head -1)
+        if [ -z "$latest" ]; then
+            crit "no indices found for $prefix-*"
+        elif [[ "$latest" == *"$today"* ]]; then
+            ok "$prefix has today's index ($latest)"
+        else
+            crit "$prefix latest index is $latest - ingestion stalled"
+        fi
+    done
+
+    hits=$(curl -sk -u "admin:$pwd" -H 'Content-Type: application/json' \
+        "$base/orcastra-*/_count" \
+        -d '{"query":{"range":{"@timestamp":{"gte":"now-5m"}}}}' \
+        | grep -o '"count" *: *[0-9]*' | awk -F: '{print $2}' | tr -d ' ')
+    if [ -n "$hits" ] && (( hits == 0 )); then
+        crit "0 docs ingested across orcastra-* in the last 5 minutes"
+    fi
+}
+
+case "${1:-both}" in
+    fluentbit) check_fluentbit ;;
+    opensearch) check_opensearch ;;
+    both) check_fluentbit; check_opensearch ;;
+    *) echo "usage: $0 [fluentbit|opensearch|both]"; exit 3 ;;
+esac
+
+echo ""
+case "$WORST" in
+    0) echo -e "${GRN}OVERALL: HEALTHY${NC}" ;;
+    1) echo -e "${YEL}OVERALL: WARNING${NC}" ;;
+    2) echo -e "${RED}OVERALL: CRITICAL${NC}" ;;
+esac
+exit "$WORST"
+EOF
+
+chmod +x /usr/local/bin/orcastra-logging-healthcheck
+
 # On VM 4 (Fluent Bit side)
-./scripts/logging_healthcheck.sh fluentbit
+orcastra-logging-healthcheck fluentbit
 
 # On VM 3 (OpenSearch side)
-OPENSEARCH_ADMIN_PASSWORD=... ./scripts/logging_healthcheck.sh opensearch
+OPENSEARCH_ADMIN_PASSWORD=... orcastra-logging-healthcheck opensearch
 ```
 
 Exit codes: `0` healthy, `1` warning, `2` critical. The script reports auth
@@ -222,9 +328,8 @@ curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
 curl -sk -u "fluentbit:<PWD_FROM_VM4>" https://localhost:9200/_cluster/health?pretty
 ```
 
-See the full runbook in `docs/LOGGING_RUNBOOK.md` (in the `orcastra-dashboard`
-repository) for additional scenarios (disk watermark, mapping conflicts, ISM
-retry).
+If you want to automate this check, keep the helper file above on both VMs and
+run it from cron every 5 minutes.
 
 ---
 

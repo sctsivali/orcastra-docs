@@ -94,7 +94,7 @@ Fluent Bit is configured for enterprise-grade durability so multi-day OpenSearch
 | `net.connect_timeout` / `net.keepalive` | `10s` / on | Detect stalled OpenSearch connections quickly. |
 | `HC_Errors_Count` / `HC_Retry_Failure_Count` | `5` over `60s` | Fluent Bit `/api/v1/health` flips red on shipping failures — Docker marks the container unhealthy and restarts it. |
 
-The healthcheck script `scripts/logging_healthcheck.sh` (in `orcastra-dashboard`) probes both ends of the pipeline and returns standard exit codes for cron + alerting integration. See [Operations → Troubleshooting](../operations/troubleshooting.md#fluent-bit-cannot-write-to-opensearch).
+The logging healthcheck is documented as a self-contained helper script in [Operations → Troubleshooting](../operations/troubleshooting.md#fluent-bit-cannot-write-to-opensearch). Copy it to each VM and wire it to cron or your alerting system.
 
 ---
 
@@ -161,11 +161,9 @@ Automatic lifecycle management for each index type:
 | `kibanaserver` | (built-in) | OpenSearch Dashboards internal user |
 
 !!! warning "Per-user unique bcrypt hashes"
-    Every internal user MUST have a unique bcrypt hash. The repository ships
-    `infrastructure/opensearch/scripts/generate_internal_users.sh` which reads
-    distinct passwords from environment variables and refuses duplicates.
-    `deploy.sh` fails fast if any `__REPLACE_ME_*__` placeholder remains in
-    `internal_users.yml`.
+    Every internal user MUST have a unique bcrypt hash. Do not depend on a repo
+    helper script being present on the target VM. Generate each hash locally,
+    then write `internal_users.yml` by hand from the deployment guide.
 
 ### Fluent Bit Writer Role
 
