@@ -237,21 +237,11 @@ EOF
     multiple users is a critical security violation: any compromised credential
     grants access to every account that shares the hash.
 
-    **Recommended (automated):** Use the generator shipped with the repo. It
-    refuses duplicate passwords and writes `internal_users.yml` with `mode 600`:
+  Generate each hash locally on the VM, then paste the results into
+  `config/internal_users.yml`. Keep the hash generation step explicit in the
+  docs so the deployment does not depend on helper files from another repo.
 
-    ```bash
-    # From the orcastra-dashboard repo
-    export ADMIN_PASSWORD=...        FLUENTBIT_PASSWORD=...
-    export AUDIT_VIEWER_PASSWORD=... KIBANASERVER_PASSWORD=...
-    ./infrastructure/opensearch/scripts/generate_internal_users.sh
-    ```
-
-    The deployment script (`infrastructure/opensearch/deploy.sh`) calls this
-    generator automatically and fails fast if any `__REPLACE_ME_*__`
-    placeholder remains in `internal_users.yml`.
-
-    **Manual hash generation (if needed):**
+  **Generate hashes locally:**
 
     ```bash
     # Option 1: Using OpenSearch container
@@ -262,6 +252,13 @@ EOF
     python3 -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', \
       bcrypt.gensalt(rounds=12)).decode().replace('\$2b\$', '\$2y\$'))"
     ```
+
+    Repeat that command four times with four different passwords:
+
+    - `OPENSEARCH_ADMIN_PASSWORD`
+    - `FLUENTBIT_PASSWORD`
+    - `AUDIT_VIEWER_PASSWORD`
+    - `KIBANASERVER_PASSWORD`
 
 ```bash
 cat > config/internal_users.yml << 'EOF'
