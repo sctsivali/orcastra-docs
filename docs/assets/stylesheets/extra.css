@@ -5,46 +5,70 @@
   --md-primary-fg-color: #2d2d2d;
   --md-primary-fg-color--light: #404040;
   --md-primary-fg-color--dark: #1a1a1a;
-  --orcastra-link-color: #0f4c9c;
-  --orcastra-link-hover: #083b7d;
-  --orcastra-muted-strong: #454c57;
+  --orcastra-text: #202937;
+  --orcastra-muted: #4a5568;
+  --orcastra-link-color: #0b3f91;
+  --orcastra-link-hover: #072f6b;
   --orcastra-card-border: #d7dce5;
+  --orcastra-header-link: #d6deee;
+  --orcastra-header-link-hover: #ffffff;
 }
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color: #2d2d2d;
   --md-primary-fg-color--light: #404040;
   --md-primary-fg-color--dark: #1a1a1a;
+  --orcastra-text: #c7d2e4;
+  --orcastra-muted: #b9c4d6;
   --orcastra-link-color: #8fbaff;
   --orcastra-link-hover: #b5d1ff;
-  --orcastra-muted-strong: #b9c4d6;
   --orcastra-card-border: #2d3442;
+  --orcastra-header-link: #d6deee;
+  --orcastra-header-link-hover: #ffffff;
 }
 
-/* Keep link contrast high in both schemes */
-.md-typeset a,
-.md-nav__link,
-.md-tabs__link,
-.md-ellipsis {
-  color: var(--orcastra-link-color);
-}
-
-.md-typeset a:hover,
-.md-nav__link:hover,
-.md-tabs__link:hover,
-.md-nav__link--active,
-.md-tabs__link--active {
-  color: var(--orcastra-link-hover);
-}
-
-/* Improve muted text readability in dark mode without blowing out contrast */
+/* Body text and links */
 .md-typeset,
 .md-typeset p,
 .md-typeset li,
 .md-typeset td,
-.md-typeset blockquote,
-.md-sidebar__inner,
-.md-nav {
-  color: var(--orcastra-muted-strong);
+.md-typeset blockquote {
+  color: var(--orcastra-text);
+}
+
+.md-typeset a {
+  color: var(--orcastra-link-color);
+}
+
+.md-typeset a:hover {
+  color: var(--orcastra-link-hover);
+}
+
+/* Header and top tabs sit on dark background in both schemes */
+.md-header .md-ellipsis,
+.md-header__title,
+.md-tabs__link {
+  color: var(--orcastra-header-link);
+}
+
+.md-tabs__link:hover,
+.md-tabs__link--active,
+.md-header .md-ellipsis:hover {
+  color: var(--orcastra-header-link-hover);
+}
+
+/* Side navigation and TOC */
+.md-sidebar .md-nav__title,
+.md-sidebar .md-nav__link,
+.md-sidebar--secondary .md-nav__title,
+.md-sidebar--secondary .md-nav__link {
+  color: var(--orcastra-muted);
+}
+
+.md-sidebar .md-nav__link:hover,
+.md-sidebar .md-nav__link--active,
+.md-sidebar--secondary .md-nav__link:hover,
+.md-sidebar--secondary .md-nav__link--active {
+  color: var(--orcastra-link-color);
 }
 
 /* Homepage cards and section cards readability */
@@ -65,12 +89,7 @@
 
 /* Improve table and TOC legibility */
 .md-typeset table:not([class]) th {
-  color: var(--orcastra-muted-strong);
-}
-
-.md-sidebar--secondary .md-nav__title,
-.md-sidebar--secondary .md-nav__link {
-  color: var(--orcastra-muted-strong);
+  color: var(--orcastra-text);
 }
 
 /* Keep icon/link affordance visible against dark backgrounds */
@@ -82,7 +101,7 @@
 
 /* Improve text contrast inside custom feedback block in overrides/main.html */
 .md-feedback p {
-  color: var(--orcastra-muted-strong) !important;
+  color: var(--orcastra-muted) !important;
 }
 
 .md-feedback a {
