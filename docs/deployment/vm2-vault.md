@@ -181,6 +181,8 @@ path "secret/metadata/clusters/*" { capabilities = ["list","read","delete"] }
 path "pki_int/issue/lxd"          { capabilities = ["create","update"] }
 path "pki_int/certs"              { capabilities = ["list"] }
 path "secret/data/orcastra/*"     { capabilities = ["create","read","update"] }
+path "secret/data/integrations/*" { capabilities = ["create","read","update","delete"] }
+path "secret/metadata/integrations/*" { capabilities = ["list","read","delete"] }
 POLICY
 ```
 
@@ -198,6 +200,26 @@ vault token create \
   -period=8760h \
   -display-name="orcastra-dashboard"
 ```
+
+### Verify Dashboard Token Permissions
+
+After generating the dashboard token (`hvs...`), verify access to integrations paths:
+
+```bash
+export VAULT_TOKEN=<DASHBOARD_TOKEN_FROM_OUTPUT>
+vault kv list secret/integrations/api_keys
+```
+
+Expected output for first-time setup:
+
+```text
+No value found at secret/metadata/integrations/api_keys
+```
+
+!!! warning "If You See 403 Permission Denied"
+    The policy is missing integrations paths. Re-apply `orcastra-policy` and ensure both paths below exist:
+    - `secret/data/integrations/*`
+    - `secret/metadata/integrations/*`
 
 !!! danger "Save the Token"
     The output shows a `token` field starting with `hvs.` - this is your `VAULT_TOKEN` for the Dashboard `.env` on VM 4.

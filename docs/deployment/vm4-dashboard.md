@@ -144,7 +144,7 @@ nano docker-compose.prod.yml
           - no-new-privileges:true
         read_only: false
         tmpfs:
-          - /tmp:mode=1777,size=100m
+          - /tmp:mode=1777,size=${BACKEND_TMPFS_SIZE:-256m}
 
       # Frontend (port: 4321)
       frontend:
@@ -156,6 +156,8 @@ nano docker-compose.prod.yml
         environment:
           - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           - NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL=${NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL}
+          - FORWARD_CLIENT_IP_HEADERS=${FORWARD_CLIENT_IP_HEADERS:-true}
+          - TRUSTED_CLIENT_IP_HEADERS=${TRUSTED_CLIENT_IP_HEADERS:-cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip}
           - INTERNAL_BACKEND_URL=http://backend:4050
           - AUTHENTIK_ISSUER=${AUTHENTIK_ISSUER}
           - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
@@ -520,8 +522,9 @@ nano .env
 
 ```ini
 # === Version ===
-APP_VERSION=latest
-API_VERSION=latest
+# Pin a release tag - do NOT use latest in production.
+APP_VERSION=<PINNED_RELEASE_TAG>
+API_VERSION=<SAME_RELEASE_TAG>
 CONTAINER_PREFIX=orcastra-dashboard
 
 # === PostgreSQL ===
@@ -535,6 +538,7 @@ DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastr
 BACKEND_PORT=8765
 ORCASTRA_DOMAIN=
 DEBUG=false
+BACKEND_TMPFS_SIZE=256m
 
 # === Frontend (port: 4321) ===
 FRONTEND_PORT=4321
@@ -555,6 +559,14 @@ REDIS_URL=redis://redis:6379/0
 # === Security ===
 CORS_ORIGINS=http://<VM4_IP>:4321
 RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_SUBNET_REQUESTS=300
+RATE_LIMIT_WINDOW_SECONDS=60
+SECURITY_PROBE_BLOCK_ENABLED=true
+TRUSTED_PROXY_CIDRS=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7,fe80::/10
+ALLOW_PRIVATE_FORWARDED_IPS=false
+FORWARD_CLIENT_IP_HEADERS=true
+TRUSTED_CLIENT_IP_HEADERS=cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip
 REDIS_ENCRYPTION_ENABLED=true
 REDIS_ENCRYPTION_KEY=<GENERATED_FERNET_KEY>
 SECRET_KEY=<GENERATED_HEX_KEY>
@@ -585,6 +597,9 @@ LOG_LEVEL=INFO
 !!! warning "Placeholder Replacement"
     Replace **all** `<...>` placeholders with actual values. The `OPENSEARCH_HOST` should be the **IP address only** - no `http://` prefix.
 
+!!! warning "Pin Image Tags in Production"
+    Do not keep `APP_VERSION=latest` on production VMs. Always pin `APP_VERSION`/`API_VERSION` to the exact release tag you intend to deploy so the pulled backend/frontend images match the expected code and security hardening.
+
 ---
 
 ## Step 7: Start the Dashboard
@@ -604,6 +619,12 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+If you update environment variables and need deterministic rollout:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate backend frontend
+```
+
 ```bash
 # Don't forget to logout after pulling
 docker logout
@@ -611,6 +632,18 @@ docker logout
 
 !!! info "Database Auto-Creation"
     Database tables are automatically created on backend startup via SQLAlchemy `create_all`. No need to run Alembic for fresh deployments. Alembic is only needed for schema migrations on existing databases.
+
+### Verify Runtime Environment (Client IP Forwarding)
+
+```bash
+docker compose -f docker-compose.prod.yml exec frontend sh -lc \
+  'env | egrep "FORWARD_CLIENT_IP_HEADERS|TRUSTED_CLIENT_IP_HEADERS|INTERNAL_BACKEND_URL"'
+
+docker compose -f docker-compose.prod.yml exec backend sh -lc \
+  'env | egrep "TRUSTED_PROXY_CIDRS|ALLOW_PRIVATE_FORWARDED_IPS|RATE_LIMIT_"'
+```
+
+Expected result: values reflect your `.env` and are not empty.
 
 ---
 
