@@ -4,9 +4,9 @@ Welcome to the Orcastra platform deployment documentation. This section covers e
 
 ## What is Orcastra?
 
-Orcastra is an operations center dashboard designed for organizations managing multi-cluster LXD infrastructure. It provides:
+Orcastra is an operations center dashboard designed for organizations managing multi-cluster infrastructure. It provides:
 
-- **Centralized Management** - Manage multiple LXD clusters, containers, and virtual machines from a single dashboard
+- **Centralized Management** - Manage multiple clusters, containers, and virtual machines from a single dashboard
 - **Identity & Access Management** - SSO authentication with role-based access control (Admin, Partner, Tenant)
 - **Secret Management** - Secure credential storage and PKI certificate management via HashiCorp Vault
 - **Audit & Compliance** - Comprehensive audit logging with 3-year retention for regulatory compliance
@@ -14,7 +14,7 @@ Orcastra is an operations center dashboard designed for organizations managing m
 
 ## Deployment Overview
 
-The platform is deployed across four virtual machines in an on-premises LXD environment:
+The platform is deployed across four virtual machines in an on-premises environment:
 
 ```mermaid
 graph LR

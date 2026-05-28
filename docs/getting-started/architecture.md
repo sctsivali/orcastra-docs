@@ -80,7 +80,7 @@ graph TB
 
 - **Role:** The main web application and API backend
 - **Key Functions:**
-    - Multi-cluster LXD management UI
+    - Multi-cluster management UI
     - REST API for cluster operations, user management, and reporting
     - Fluent Bit sidecar for structured log shipping
 - **Technology:** Next.js (Frontend), FastAPI (Backend), PostgreSQL, Redis, Fluent Bit (Docker)
