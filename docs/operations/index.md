@@ -4,6 +4,14 @@ This section covers post-deployment operations: domain configuration, networking
 
 <div class="grid cards" markdown>
 
+-   :material-robot:{ .lg .middle } **ORCA Agent Installer**
+
+    ---
+
+    Generate secure ORCA Agent setup env files with a single script command
+
+    [:octicons-arrow-right-24: ORCA Agent Installer](orca-agent-install.md)
+
 -   :material-web:{ .lg .middle } **Domain Setup**
 
     ---
