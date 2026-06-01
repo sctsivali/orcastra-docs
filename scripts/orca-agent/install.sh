@@ -4,7 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
+  install.sh --bootstrap-url <url>
   install.sh --api-url <url> --enrollment-token <token> --agent-name <name> --frpc-token <token> --cluster-id <id> [--output <path>]
+
+Modes:
+  --bootstrap-url    Download and execute an OrcaHub-generated bootstrap installer script
+  manual flags       Generate local env file from explicit secrets/values
 
 Required flags:
   --api-url            OrcaHub API base URL (ex; https://api.orcahub.example)
@@ -40,11 +45,16 @@ AGENT_NAME=""
 FRPC_TOKEN=""
 CLUSTER_ID=""
 OUTPUT_PATH="/etc/orca-agent/setup.env"
+BOOTSTRAP_URL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --api-url)
       API_URL="${2:-}"
+      shift 2
+      ;;
+    --bootstrap-url)
+      BOOTSTRAP_URL="${2:-}"
       shift 2
       ;;
     --enrollment-token)
@@ -78,6 +88,24 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -n "$BOOTSTRAP_URL" ]]; then
+  case "$BOOTSTRAP_URL" in
+    http://*|https://*) ;;
+    *)
+      echo "error: --bootstrap-url must start with http:// or https://" >&2
+      exit 1
+      ;;
+  esac
+
+  TMP_PATH="$(mktemp /tmp/orca-agent-bootstrap.XXXXXX.sh)"
+  trap 'rm -f "$TMP_PATH"' EXIT
+
+  curl -fsSL "$BOOTSTRAP_URL" -o "$TMP_PATH"
+  chmod 700 "$TMP_PATH"
+  bash "$TMP_PATH"
+  exit 0
+fi
 
 require_value "--api-url" "$API_URL"
 require_value "--enrollment-token" "$ENROLLMENT_TOKEN"
