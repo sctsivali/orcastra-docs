@@ -9,6 +9,19 @@ Use this helper script to generate a secure environment file for ORCA Agent regi
 
 ## Recommended Usage
 
+Use OrcaHub's generated short-lived bootstrap URL and let this script fetch the full installer logic securely.
+
+```bash
+INSTALLER_SCRIPT_URL="https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/scripts/orca-agent/install.sh"
+BOOTSTRAP_URL="<COPY_FROM_ORCAHUB_REGISTER_DIALOG>"
+
+curl -fsSL "$INSTALLER_SCRIPT_URL" -o /tmp/orca-agent-install.sh
+chmod +x /tmp/orca-agent-install.sh
+/tmp/orca-agent-install.sh --bootstrap-url "$BOOTSTRAP_URL"
+```
+
+## Manual Usage
+
 Pin a script version and validate checksum before running it.
 
 ```bash
@@ -32,7 +45,7 @@ chmod +x /tmp/orca-agent-install.sh
 
 ## One-liner Variant
 
-If you already trust the source and version pinning strategy in your environment:
+If you intentionally use manual flags instead of OrcaHub bootstrap mode:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/scripts/orca-agent/install.sh" \
