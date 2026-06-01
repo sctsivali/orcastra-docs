@@ -140,6 +140,7 @@ nav:
       - VM 4 - Orcastra Dashboard: deployment/vm4-dashboard.md
   - Operations:
       - operations/index.md
+      - ORCA Agent Installer: operations/orca-agent-install.md
       - Domain Setup (Cloudflare): operations/domain-setup.md
       - Networking & Connectivity: operations/networking.md
       - Verification & Testing: operations/verification.md
