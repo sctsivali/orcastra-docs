@@ -196,10 +196,18 @@ vault policy write orcastra-policy /tmp/orcastra-policy.hcl
 
 ```bash
 vault token create \
+  -orphan \
   -policy=orcastra-policy \
-  -period=8760h \
+  -ttl=0 \
   -display-name="orcastra-dashboard"
 ```
+
+!!! warning "Use `-ttl=0`, not `-period`"
+    A `-period` token expires (~1 year here) unless something renews it, and the
+    backend has no renew-self logic - so Vault calls start returning `403` long
+    after a successful install. `-orphan -ttl=0` issues a non-expiring token,
+    matching the recovery procedure in
+    [Troubleshooting](../operations/troubleshooting.md).
 
 ### Verify Dashboard Token Permissions
 
@@ -234,6 +242,7 @@ Vault audit logs are forwarded to OpenSearch (VM 3) via Fluent Bit for centraliz
 
 ```bash
 export VAULT_ADDR='http://127.0.0.1:8200'
+unset VAULT_TOKEN   # Clear the dashboard token from Step 5 so the root login below takes effect
 vault login   # Enter root token
 
 mkdir -p /var/log/vault
@@ -242,6 +251,14 @@ chmod 750 /var/log/vault
 
 vault audit enable file file_path=/var/log/vault/audit.log
 ```
+
+!!! warning "403 Permission Denied When Enabling Audit"
+    If `vault login` prints `WARNING! The VAULT_TOKEN environment variable is set!` and
+    `vault audit enable` then fails with `Code: 403 ... permission denied`, the `VAULT_TOKEN`
+    you exported in [Step 5](#verify-dashboard-token-permissions) is still set and **takes
+    precedence over the root token** from `vault login`. The dashboard token uses
+    `orcastra-policy`, which has no `sys/audit` access. Run `unset VAULT_TOKEN`, then re-run the
+    audit command.
 
 ### Configure Logrotate
 
@@ -325,6 +342,12 @@ nano /etc/fluent-bit/fluent-bit.conf
 
 !!! warning "Placeholder Values"
     Replace `<VM3_PRIVATE_IP>` and `<FLUENTBIT_PASSWORD_FROM_VM3>` with actual values from [VM 3 setup](vm3-opensearch.md).
+
+    The Fluent Bit password is a single shared credential used in **three** places:
+    the `fluentbit` user in OpenSearch (VM 3), this literal `HTTP_Passwd` (VM 2), and
+    `OPENSEARCH_PASSWORD` in the dashboard `.env` (VM 4). Rotating it means updating
+    all three at once, or shipping silently breaks (see
+    [Troubleshooting](../operations/troubleshooting.md)).
 
 ### Configure Parser
 

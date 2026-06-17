@@ -48,7 +48,7 @@ Groups are assigned in the Authentik admin panel and passed to the application v
 
 ### Access Policy
 
-The backend uses a scoped Vault token with the `orcastra-dashboard` policy:
+The backend uses a scoped Vault token with the `orcastra-policy` policy:
 
 ```hcl
 # KV v2 - read/write application secrets
@@ -108,7 +108,7 @@ Logs are:
 
 - Rotated via `logrotate` (daily, 90 days retention)
 - Forwarded to OpenSearch via Fluent Bit on VM 2
-- Indexed as `vault-audit-*` with 1-year ISM policy
+- Indexed as `vault-audit-*` (planned: 1-year ISM retention - not yet configured)
 
 ### Application Audit
 
@@ -119,7 +119,7 @@ The backend generates structured audit logs for:
 - Data modifications (CRUD operations on nodes, secrets)
 - Administrative actions (settings changes, user management)
 
-These are indexed in OpenSearch as `orcastra-audit-*` with a 3-year retention ISM policy.
+These are indexed in OpenSearch as `orcastra-audit-*` (planned: 3-year retention ISM policy - not yet configured).
 
 ---
 
