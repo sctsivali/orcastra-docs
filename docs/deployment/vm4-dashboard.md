@@ -349,7 +349,6 @@ Create `config/fluent-bit/fluent-bit.conf`:
         storage.total_limit_size  2G
         Trace_Error       On
         Replace_Dots      On
-        Write_Operation   create
         Id_Key            request_id
         Generate_ID       On
 
@@ -655,12 +654,26 @@ Expected result: values reflect your `.env` and are not empty.
 ### Get Docker Bridge Subnet
 
 ```bash
-DOCKER_BRIDGE=$(docker network inspect root_orcastra-dashboard \
-  --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null \
-  || docker network inspect orcastra-dashboard \
+# The compose network has no explicit name:, so Docker prefixes it with the
+# compose project name (the folder you run compose from) -> <project>_orcastra-dashboard.
+# Auto-detect the real network name instead of hard-coding the prefix:
+NET=$(docker network ls --filter name=orcastra-dashboard --format '{{.Name}}' | head -1)
+DOCKER_BRIDGE=$(docker network inspect "$NET" \
   --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
-echo "Docker subnet: $DOCKER_BRIDGE"
+echo "Network: $NET  |  Docker subnet: $DOCKER_BRIDGE"
+
+# Guard: an empty result means the stack isn't up yet - bring it up first.
+[ -n "$DOCKER_BRIDGE" ] || echo "EMPTY: run 'docker compose -f docker-compose.prod.yml up -d' first, then re-run this."
 ```
+
+!!! note "The network name is project-prefixed"
+    The `networks: orcastra-dashboard:` block in compose has no explicit `name:`, so the
+    real network is `<compose-project>_orcastra-dashboard` - and the project name defaults
+    to the directory you run compose from (e.g. `orcastra_orcastra-dashboard` when deploying
+    from `~/orcastra`). That is why a hard-coded `root_orcastra-dashboard` returns nothing.
+    The network also only exists **after** a successful
+    `docker compose -f docker-compose.prod.yml up -d`, so an empty `$DOCKER_BRIDGE` usually
+    means the stack is not up yet.
 
 ### Add iptables Rules
 

@@ -253,12 +253,15 @@ EOF
       bcrypt.gensalt(rounds=12)).decode().replace('\$2b\$', '\$2y\$'))"
     ```
 
-    Repeat that command four times with four different passwords:
+    Repeat that command three times with three different passwords:
 
     - `OPENSEARCH_ADMIN_PASSWORD`
-    - `FLUENTBIT_PASSWORD`
     - `AUDIT_VIEWER_PASSWORD`
     - `KIBANASERVER_PASSWORD`
+
+    (`FLUENTBIT_PASSWORD` is **not** hashed here - the `fluentbit` user is created
+    via the Security API in Step 8; its plaintext password lives in `.env` and is
+    pushed to VM 2 / VM 4.)
 
 ```bash
 cat > config/internal_users.yml << 'EOF'
@@ -274,12 +277,9 @@ admin:
     - "admin"
   description: "Admin user for Orcastra logging"
 
-fluentbit:
-  hash: "<BCRYPT_HASH_OF_FLUENTBIT_PASSWORD>"
-  reserved: false
-  backend_roles:
-    - "log_writer"
-  description: "Fluent Bit service account for log ingestion"
+# `fluentbit` is intentionally NOT defined here - it is created via the Security
+# API in Step 8. Seeding it here too would re-apply a placeholder hash on any
+# security-config reload and break log shipping (401). Keep it API-managed only.
 
 audit_viewer:
   hash: "<BCRYPT_HASH_OF_AUDIT_VIEWER_PASSWORD>"
@@ -297,6 +297,22 @@ kibanaserver:
 EOF
 ```
 
+!!! danger "Replace the placeholders before deploying"
+    The heredoc above writes literal `<BCRYPT_HASH_OF_*>` placeholders. Edit
+    `config/internal_users.yml` and replace each with the matching bcrypt hash
+    you generated above, then verify none remain **before** `docker compose up`:
+
+    ```bash
+    grep -n '<BCRYPT_HASH' config/internal_users.yml \
+      && echo "STOP: placeholders still present - replace them first" \
+      || echo "OK: all hashes substituted"
+    ```
+
+    If a placeholder is left, OpenSearch stores the literal string as that user's
+    credential - `admin`/`audit_viewer`/`kibanaserver` can never authenticate and
+    Steps 7-10 fail with `401`. (`fluentbit` is (re)created via the API in Step 8,
+    so only it survives a missed substitution.)
+
 ### Roles
 
 ```bash
@@ -309,6 +325,7 @@ _meta:
 log_writer:
   reserved: false
   cluster_permissions:
+    - "cluster_composite_ops"
     - "cluster_monitor"
     - "cluster:admin/ingest/pipeline/put"
     - "cluster:admin/ingest/pipeline/get"
@@ -324,6 +341,7 @@ log_writer:
         - "crud"
         - "create_index"
         - "manage"
+        - "indices:admin/mapping/auto_put"
 
 audit_reader:
   reserved: false
@@ -350,6 +368,16 @@ audit_admin:
         - "all"
 EOF
 ```
+
+!!! danger "`cluster_composite_ops` is required - without it, log ingestion silently 403s"
+    The `/_bulk` endpoint used by Fluent Bit (and every single-document write,
+    which OpenSearch wraps into a bulk op) is authorized at **cluster scope**
+    first: `indices:data/write/bulk` must be granted via `cluster_permissions`,
+    not just at index level. Omit `cluster_composite_ops` and `fluentbit` will
+    authenticate and **read** fine, but every **write** fails with
+    `security_exception: no permissions for [indices:data/write/bulk]` - even
+    though the index-level `crud` grant looks correct. See
+    [Troubleshooting](../operations/troubleshooting.md).
 
 ### Roles Mapping
 
@@ -544,8 +572,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
       "script": {
         "lang": "painless",
         "description": "Merge parsed fields and flatten nested objects",
-        "source": "if (ctx._parsed == null) return; for (def entry : ctx._parsed.entrySet()) { if (entry.getKey() != '\''time'\'') { ctx[entry.getKey()] = entry.getValue(); } } if (ctx.request != null && ctx.request.namespace instanceof Map) { ctx.request.namespace_id = ctx.request.namespace.get('\''id'\''); ctx.request.remove('\''namespace'\''); } if (ctx.auth != null && ctx.auth.policy_results instanceof Map) { ctx.auth.remove('\''policy_results'\''); } if (ctx.request != null && ctx.request.mount_running_version != null) { ctx.request.remove('\''mount_running_version'\''); } if (ctx.request != null && ctx.request.mount_class != null) { ctx.request.remove('\''mount_class'\''); } if (ctx.request != null && ctx.request.mount_point != null) { ctx.request.remove('\''mount_point'\''); }",
-        "if": "ctx._parsed != null"
+        "source": "if (ctx._parsed instanceof Map) { for (def entry : ctx._parsed.entrySet()) { if (entry.getKey() != '\''time'\'') { ctx[entry.getKey()] = entry.getValue(); } } } if (ctx.request instanceof Map && ctx.request.namespace instanceof Map) { ctx.request.namespace_id = ctx.request.namespace.get('\''id'\''); ctx.request.remove('\''namespace'\''); } if (ctx.auth instanceof Map) { ctx.auth.remove('\''policy_results'\''); } if (ctx.request instanceof Map) { ctx.request.remove('\''mount_running_version'\''); ctx.request.remove('\''mount_class'\''); ctx.request.remove('\''mount_point'\''); }"
       }
     },
     {
@@ -580,6 +607,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "time": { "type": "date" },
         "type": { "type": "keyword" },
         "auth": {
+          "dynamic": false,
           "properties": {
             "client_token": { "type": "keyword" },
             "accessor": { "type": "keyword" },
@@ -591,6 +619,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
           }
         },
         "request": {
+          "dynamic": false,
           "properties": {
             "id": { "type": "keyword" },
             "operation": { "type": "keyword" },
@@ -602,11 +631,12 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
             "namespace": { "type": "keyword" },
             "namespace_id": { "type": "keyword" },
             "path": { "type": "keyword" },
-            "remote_address": { "type": "ip" },
-            "remote_port": { "type": "integer" }
+            "remote_address": { "type": "keyword" },
+            "remote_port": { "type": "keyword" }
           }
         },
         "response": {
+          "dynamic": false,
           "properties": {
             "mount_accessor": { "type": "keyword" },
             "mount_type": { "type": "keyword" }
@@ -650,6 +680,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "severity": { "type": "keyword" },
         "actor": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "user_id": { "type": "keyword" },
             "user_type": { "type": "keyword" },
@@ -661,6 +692,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         },
         "target": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "type": { "type": "keyword" },
             "id": { "type": "keyword" },
@@ -734,8 +766,12 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         },
         "client": {
           "type": "object",
+          "dynamic": false,
           "properties": {
-            "ip": { "type": "ip" },
+            "ip": { "type": "keyword" },
+            "proxy_ip": { "type": "keyword" },
+            "ip_source": { "type": "keyword" },
+            "proxy_trusted": { "type": "boolean" },
             "user_agent": { "type": "text" },
             "origin": { "type": "keyword" }
           }

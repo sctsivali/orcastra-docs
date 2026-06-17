@@ -90,9 +90,9 @@ Fluent Bit is configured for enterprise-grade durability so multi-day OpenSearch
 | `Retry_Limit` | `no_limits` (all outputs) | Audit logs must never be dropped (compliance); access/app inherit the same policy. |
 | `storage.type filesystem` (per input) | enabled | Buffered chunks survive container restarts. |
 | `storage.backlog.mem_limit` | `512M` | Headroom for in-flight retries during transient slowness. |
-| `storage.total_limit_size` (per output) | audit `8G`, app `4G`, access `2G` | Per-stream disk backlog ceiling — audit gets the largest budget. |
+| `storage.total_limit_size` (per output) | audit `8G`, app `4G`, access `2G` | Per-stream disk backlog ceiling - audit gets the largest budget. |
 | `net.connect_timeout` / `net.keepalive` | `10s` / on | Detect stalled OpenSearch connections quickly. |
-| `HC_Errors_Count` / `HC_Retry_Failure_Count` | `5` over `60s` | Fluent Bit `/api/v1/health` flips red on shipping failures — Docker marks the container unhealthy and restarts it. |
+| `HC_Errors_Count` / `HC_Retry_Failure_Count` | `5` over `60s` | Fluent Bit `/api/v1/health` flips red on shipping failures - Docker marks the container unhealthy and restarts it. |
 
 The logging healthcheck is documented as a self-contained helper script in [Operations → Troubleshooting](../operations/troubleshooting.md#fluent-bit-cannot-write-to-opensearch). Copy it to each VM and wire it to cron or your alerting system.
 
@@ -110,7 +110,14 @@ Three index templates are configured on VM 3 to define field mappings:
 
 ### ISM (Index State Management) Policies
 
-Automatic lifecycle management for each index type:
+!!! warning "Planned - not yet created by the deployment steps"
+    The policies below describe the **intended** retention design, but the VM 3
+    deployment guide does **not** create any ISM policy (no `_plugins/_ism` PUT)
+    nor attach one via `policy_id` in the index templates. Until you add them,
+    indices grow unbounded. Treat this as the target lifecycle to implement, not
+    as already-active configuration.
+
+Automatic lifecycle management for each index type (target design):
 
 === "Access Logs (90 days)"
 
