@@ -304,7 +304,7 @@ Bit retry counters.
 
 #### Symptom: `Authentication finally failed for fluentbit from <VM4_IP>` in OpenSearch logs
 
-This is a **password drift** between VMs - the password Fluent Bit sends no
+This is a **password drift** between VMs, the password Fluent Bit sends no
 longer matches the `fluentbit` user in OpenSearch. Logs are silently dropped
 once `Retry_Limit` is reached, so dashboards stop updating without an error.
 
@@ -343,8 +343,8 @@ User [name=fluentbit, backend_roles=[log_writer]...","type":"security_exception"
 ```
 
 This is a **cluster-scope permission gap**, not an index-permission problem.
-`/_bulk` - and every single-document write, which OpenSearch wraps into a bulk
-op - is authorized at **cluster scope** first; `indices:data/write/bulk` must be
+`/_bulk` and every single-document write, which OpenSearch wraps into a bulk
+op is authorized at **cluster scope** first. `indices:data/write/bulk` must be
 in `cluster_permissions`. The index-level `crud` grant is never consulted if the
 cluster gate fails, so **reads succeed but every write 403s**, even on an
 existing index whose pattern the role clearly covers.
@@ -481,10 +481,10 @@ docker compose -f docker-compose.prod.yml restart backend
 !!! info "Vault Token Lifecycle"
     Tokens can become invalid for several reasons:
 
-    - **Expired** - TTL elapsed (most common, check `expire_time` from lookup)
-    - **Revoked** - Admin manually revoked, or parent token was revoked
-    - **Vault restart** - Non-persistent tokens are lost on restart (in-memory storage only)
-    - **Sealed** - Vault sealed = all tokens temporarily unusable until unsealed
+    - **Expired**, TTL elapsed (most common, check `expire_time` from lookup)
+    - **Revoked**, admin manually revoked, or parent token was revoked
+    - **Vault restart**, non-persistent tokens are lost on restart (in-memory storage only)
+    - **Sealed**, Vault sealed = all tokens temporarily unusable until unsealed
 
 ---
 
