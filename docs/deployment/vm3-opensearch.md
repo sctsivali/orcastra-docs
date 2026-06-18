@@ -40,8 +40,8 @@ echo "Dashboards (kibanaserver) password: $DASHBOARDS_PASS"
 ```
 
 !!! danger "Save Both Passwords"
-    - **OpenSearch admin password** - used for all admin API calls
-    - **Dashboards password** - used by OpenSearch Dashboards internally
+    - **OpenSearch admin password** used for all admin API calls
+    - **Dashboards password** used by OpenSearch Dashboards internally
 
 Create the `.env` file:
 
@@ -95,7 +95,7 @@ chmod 777 "$ARCHIVE_DIR"
 cat > docker-compose.yml << 'EOF'
 services:
   opensearch:
-    image: opensearchproject/opensearch:latest
+    image: opensearchproject/opensearch:3.5.0
     container_name: opensearch
     restart: always
     environment:
@@ -133,11 +133,11 @@ services:
       start_period: 60s
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:latest
+    image: opensearchproject/opensearch-dashboards:3.5.0
     container_name: opensearch-dashboards
     restart: always
     environment:
-      - OPENSEARCH_HOSTS="https://opensearch:9200"
+      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
       - OPENSEARCH_DASHBOARDS_PASSWORD=${OPENSEARCH_DASHBOARDS_PASSWORD}
     volumes:
@@ -227,6 +227,9 @@ path.repo: ["/usr/share/opensearch/snapshots"]
 
 # Index settings
 action.auto_create_index: true
+
+# Compatibility (clients that probe the main response version)
+compatibility.override_main_response_version: true
 EOF
 ```
 
@@ -277,7 +280,7 @@ admin:
     - "admin"
   description: "Admin user for Orcastra logging"
 
-# `fluentbit` is intentionally NOT defined here - it is created via the Security
+# `fluentbit` is intentionally NOT defined here, it is created via the Security
 # API in Step 8. Seeding it here too would re-apply a placeholder hash on any
 # security-config reload and break log shipping (401). Keep it API-managed only.
 
@@ -291,8 +294,6 @@ audit_viewer:
 kibanaserver:
   hash: "<BCRYPT_HASH_OF_DASHBOARDS_PASSWORD>"
   reserved: true
-  backend_roles:
-    - "kibana_server"
   description: "OpenSearch Dashboards internal user"
 EOF
 ```
@@ -309,7 +310,7 @@ EOF
     ```
 
     If a placeholder is left, OpenSearch stores the literal string as that user's
-    credential - `admin`/`audit_viewer`/`kibanaserver` can never authenticate and
+    credential, `admin`/`audit_viewer`/`kibanaserver` can never authenticate and
     Steps 7-10 fail with `401`. (`fluentbit` is (re)created via the API in Step 8,
     so only it survives a missed substitution.)
 
@@ -369,7 +370,7 @@ audit_admin:
 EOF
 ```
 
-!!! danger "`cluster_composite_ops` is required - without it, log ingestion silently 403s"
+!!! danger "`cluster_composite_ops` is required, without it, log ingestion silently 403s"
     The `/_bulk` endpoint used by Fluent Bit (and every single-document write,
     which OpenSearch wraps into a bulk op) is authorized at **cluster scope**
     first: `indices:data/write/bulk` must be granted via `cluster_permissions`,
@@ -445,6 +446,13 @@ logging.verbose: false
 EOF
 ```
 
+!!! note "`cookie.secure` and HTTPS"
+    `opensearch_security.cookie.secure` is `false` because Dashboards is served over plain
+    HTTP on port 5601 (typically reached across the private Tailscale/WireGuard mesh, which
+    already encrypts the transport). With `true`, the browser withholds the session cookie
+    over HTTP and login loops. Once Dashboards sits behind an HTTPS reverse proxy or tunnel,
+    set it to `true`.
+
 ---
 
 ## Step 7: Start OpenSearch
@@ -511,13 +519,13 @@ apt update && apt install git -y
 
 Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
 
-- **Orcastra Logs Overview** - Combined view of all log types
-- **Orcastra Access Logs** - HTTP request monitoring and latency tracking
-- **Orcastra Activity & Audit Logs** - Security compliance and user activity
-- **Vault Security Audit** - Vault operations and secret access patterns
+- **Orcastra Logs Overview**, combined view of all log types
+- **Orcastra Access Logs**, HTTP request monitoring and latency tracking
+- **Orcastra Activity & Audit Logs**, security compliance and user activity
+- **Vault Security Audit**, vault operations and secret access patterns
 
 !!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-docs) or copy them from your deployment package under `config/opensearch-dashboards/`.
+    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-dashboard) under `config/opensearch-dashboards/`, or copy them from your deployment package.
 
 Place the following files in `config/opensearch-dashboards/`:
 
@@ -756,6 +764,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "response_size": { "type": "long" },
         "user": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "id": { "type": "keyword" },
             "type": { "type": "keyword" },
@@ -818,6 +827,171 @@ curl -sk -u "admin:$OPENSEARCH_PASS" \
     ```bash
     curl -sk -u "admin:your-actual-password" ...
     ```
+
+---
+
+## Step 11: Create ISM Retention Policies
+
+Index State Management (ISM) enforces retention automatically. Without it, indices
+grow unbounded. Each policy attaches to new indices through its `ism_template`
+(matched by index pattern) at creation time, so the date-based indices Fluent Bit
+writes (`orcastra-access-YYYY.MM.DD`, etc.) pick up their lifecycle with no manual
+step. Create the policies now, before any logs flow.
+
+### Register the Snapshot Repository
+
+The `archive` state in each policy snapshots an index before deletion, so the
+repository must exist first. The compose file already mounts the archive volume at
+`/usr/share/opensearch/snapshots` and `opensearch.yml` registers it as `path.repo`.
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_snapshot/orcastra-archive" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "type": "fs",
+  "settings": {
+    "location": "/usr/share/opensearch/snapshots",
+    "compress": true,
+    "max_snapshot_bytes_per_sec": "40mb",
+    "max_restore_bytes_per_sec": "40mb"
+  }
+}'
+```
+
+Should return `{"acknowledged":true}`.
+
+### Access Logs Policy (90 days)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-access-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-access indices - 90 day retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "7d" } },
+        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "85d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "90d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-access-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Audit Logs Policy (3 years)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-audit-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-audit indices - 3 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "30d" } },
+        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
+      ] },
+      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-audit-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### App Logs Policy (30 days)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-app-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-app indices - 30 day retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "7d" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "25d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "30d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-app-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Vault Audit Policy (3 years)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/vault-audit-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for vault-audit indices - 3 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "30d" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
+      ] },
+      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["vault-audit-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Verify Policies
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" \
+  "https://localhost:9200/_plugins/_ism/policies" \
+  | python3 -c "import sys,json; print('\n'.join(p['_id'] for p in json.load(sys.stdin)['policies']))"
+```
+
+Should list all four: `orcastra-access-policy`, `orcastra-audit-policy`, `orcastra-app-policy`, `vault-audit-policy`.
+
+!!! note "Attachment timing"
+    ISM attaches a policy only to indices created **after** the policy exists. Since
+    these are created during VM 3 setup (before VM 2 / VM 4 start forwarding), every
+    new daily index is covered. If you add a policy after indices already exist, attach
+    it manually with `POST _plugins/_ism/add/<index>`.
 
 ---
 
