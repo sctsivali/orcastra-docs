@@ -133,7 +133,7 @@ graph LR
 | `orcastra-access-*` | HTTP access logs | 90 days |
 | `orcastra-audit-*` | Activity & audit events | 3 years |
 | `orcastra-app-*` | Application logs | 30 days |
-| `vault-audit-*` | Vault operations | 30 days |
+| `vault-audit-*` | Vault operations | 3 years |
 
 ## Network Topology
 

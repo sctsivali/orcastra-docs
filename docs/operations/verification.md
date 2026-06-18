@@ -33,10 +33,10 @@ Confirm each VM's services are running:
     Should return JSON with `"cluster_name"`, `"status"`, etc.
 
     ```bash
-    curl -sk https://localhost:5601/api/status \
-      -u admin:<ADMIN_PASSWORD>
+    curl -s http://localhost:5601/api/status
     ```
-    Should return OpenSearch Dashboards status.
+    Dashboards is served over HTTP on 5601. A JSON body containing `available`, or an
+    `Unauthorized` response, both confirm the service is up.
 
 === "VM 4 - Dashboard"
 

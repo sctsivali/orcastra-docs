@@ -40,8 +40,8 @@ echo "Dashboards (kibanaserver) password: $DASHBOARDS_PASS"
 ```
 
 !!! danger "Save Both Passwords"
-    - **OpenSearch admin password** - used for all admin API calls
-    - **Dashboards password** - used by OpenSearch Dashboards internally
+    - **OpenSearch admin password** used for all admin API calls
+    - **Dashboards password** used by OpenSearch Dashboards internally
 
 Create the `.env` file:
 
@@ -95,7 +95,7 @@ chmod 777 "$ARCHIVE_DIR"
 cat > docker-compose.yml << 'EOF'
 services:
   opensearch:
-    image: opensearchproject/opensearch:latest
+    image: opensearchproject/opensearch:3.5.0
     container_name: opensearch
     restart: always
     environment:
@@ -133,11 +133,11 @@ services:
       start_period: 60s
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:latest
+    image: opensearchproject/opensearch-dashboards:3.5.0
     container_name: opensearch-dashboards
     restart: always
     environment:
-      - OPENSEARCH_HOSTS="https://opensearch:9200"
+      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
       - OPENSEARCH_DASHBOARDS_PASSWORD=${OPENSEARCH_DASHBOARDS_PASSWORD}
     volumes:
@@ -227,6 +227,9 @@ path.repo: ["/usr/share/opensearch/snapshots"]
 
 # Index settings
 action.auto_create_index: true
+
+# Compatibility (clients that probe the main response version)
+compatibility.override_main_response_version: true
 EOF
 ```
 
@@ -253,12 +256,15 @@ EOF
       bcrypt.gensalt(rounds=12)).decode().replace('\$2b\$', '\$2y\$'))"
     ```
 
-    Repeat that command four times with four different passwords:
+    Repeat that command three times with three different passwords:
 
     - `OPENSEARCH_ADMIN_PASSWORD`
-    - `FLUENTBIT_PASSWORD`
     - `AUDIT_VIEWER_PASSWORD`
     - `KIBANASERVER_PASSWORD`
+
+    (`FLUENTBIT_PASSWORD` is **not** hashed here - the `fluentbit` user is created
+    via the Security API in Step 8; its plaintext password lives in `.env` and is
+    pushed to VM 2 / VM 4.)
 
 ```bash
 cat > config/internal_users.yml << 'EOF'
@@ -274,12 +280,9 @@ admin:
     - "admin"
   description: "Admin user for Orcastra logging"
 
-fluentbit:
-  hash: "<BCRYPT_HASH_OF_FLUENTBIT_PASSWORD>"
-  reserved: false
-  backend_roles:
-    - "log_writer"
-  description: "Fluent Bit service account for log ingestion"
+# `fluentbit` is intentionally NOT defined here, it is created via the Security
+# API in Step 8. Seeding it here too would re-apply a placeholder hash on any
+# security-config reload and break log shipping (401). Keep it API-managed only.
 
 audit_viewer:
   hash: "<BCRYPT_HASH_OF_AUDIT_VIEWER_PASSWORD>"
@@ -291,11 +294,25 @@ audit_viewer:
 kibanaserver:
   hash: "<BCRYPT_HASH_OF_DASHBOARDS_PASSWORD>"
   reserved: true
-  backend_roles:
-    - "kibana_server"
   description: "OpenSearch Dashboards internal user"
 EOF
 ```
+
+!!! danger "Replace the placeholders before deploying"
+    The heredoc above writes literal `<BCRYPT_HASH_OF_*>` placeholders. Edit
+    `config/internal_users.yml` and replace each with the matching bcrypt hash
+    you generated above, then verify none remain **before** `docker compose up`:
+
+    ```bash
+    grep -n '<BCRYPT_HASH' config/internal_users.yml \
+      && echo "STOP: placeholders still present - replace them first" \
+      || echo "OK: all hashes substituted"
+    ```
+
+    If a placeholder is left, OpenSearch stores the literal string as that user's
+    credential, `admin`/`audit_viewer`/`kibanaserver` can never authenticate and
+    Steps 7-10 fail with `401`. (`fluentbit` is (re)created via the API in Step 8,
+    so only it survives a missed substitution.)
 
 ### Roles
 
@@ -309,6 +326,7 @@ _meta:
 log_writer:
   reserved: false
   cluster_permissions:
+    - "cluster_composite_ops"
     - "cluster_monitor"
     - "cluster:admin/ingest/pipeline/put"
     - "cluster:admin/ingest/pipeline/get"
@@ -324,6 +342,7 @@ log_writer:
         - "crud"
         - "create_index"
         - "manage"
+        - "indices:admin/mapping/auto_put"
 
 audit_reader:
   reserved: false
@@ -350,6 +369,16 @@ audit_admin:
         - "all"
 EOF
 ```
+
+!!! danger "`cluster_composite_ops` is required, without it, log ingestion silently 403s"
+    The `/_bulk` endpoint used by Fluent Bit (and every single-document write,
+    which OpenSearch wraps into a bulk op) is authorized at **cluster scope**
+    first: `indices:data/write/bulk` must be granted via `cluster_permissions`,
+    not just at index level. Omit `cluster_composite_ops` and `fluentbit` will
+    authenticate and **read** fine, but every **write** fails with
+    `security_exception: no permissions for [indices:data/write/bulk]` - even
+    though the index-level `crud` grant looks correct. See
+    [Troubleshooting](../operations/troubleshooting.md).
 
 ### Roles Mapping
 
@@ -417,6 +446,13 @@ logging.verbose: false
 EOF
 ```
 
+!!! note "`cookie.secure` and HTTPS"
+    `opensearch_security.cookie.secure` is `false` because Dashboards is served over plain
+    HTTP on port 5601 (typically reached across the private Tailscale/WireGuard mesh, which
+    already encrypts the transport). With `true`, the browser withholds the session cookie
+    over HTTP and login loops. Once Dashboards sits behind an HTTPS reverse proxy or tunnel,
+    set it to `true`.
+
 ---
 
 ## Step 7: Start OpenSearch
@@ -483,13 +519,13 @@ apt update && apt install git -y
 
 Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
 
-- **Orcastra Logs Overview** - Combined view of all log types
-- **Orcastra Access Logs** - HTTP request monitoring and latency tracking
-- **Orcastra Activity & Audit Logs** - Security compliance and user activity
-- **Vault Security Audit** - Vault operations and secret access patterns
+- **Orcastra Logs Overview**, combined view of all log types
+- **Orcastra Access Logs**, HTTP request monitoring and latency tracking
+- **Orcastra Activity & Audit Logs**, security compliance and user activity
+- **Vault Security Audit**, vault operations and secret access patterns
 
 !!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-docs) or copy them from your deployment package under `config/opensearch-dashboards/`.
+    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-dashboard) under `config/opensearch-dashboards/`, or copy them from your deployment package.
 
 Place the following files in `config/opensearch-dashboards/`:
 
@@ -544,8 +580,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
       "script": {
         "lang": "painless",
         "description": "Merge parsed fields and flatten nested objects",
-        "source": "if (ctx._parsed == null) return; for (def entry : ctx._parsed.entrySet()) { if (entry.getKey() != '\''time'\'') { ctx[entry.getKey()] = entry.getValue(); } } if (ctx.request != null && ctx.request.namespace instanceof Map) { ctx.request.namespace_id = ctx.request.namespace.get('\''id'\''); ctx.request.remove('\''namespace'\''); } if (ctx.auth != null && ctx.auth.policy_results instanceof Map) { ctx.auth.remove('\''policy_results'\''); } if (ctx.request != null && ctx.request.mount_running_version != null) { ctx.request.remove('\''mount_running_version'\''); } if (ctx.request != null && ctx.request.mount_class != null) { ctx.request.remove('\''mount_class'\''); } if (ctx.request != null && ctx.request.mount_point != null) { ctx.request.remove('\''mount_point'\''); }",
-        "if": "ctx._parsed != null"
+        "source": "if (ctx._parsed instanceof Map) { for (def entry : ctx._parsed.entrySet()) { if (entry.getKey() != '\''time'\'') { ctx[entry.getKey()] = entry.getValue(); } } } if (ctx.request instanceof Map && ctx.request.namespace instanceof Map) { ctx.request.namespace_id = ctx.request.namespace.get('\''id'\''); ctx.request.remove('\''namespace'\''); } if (ctx.auth instanceof Map) { ctx.auth.remove('\''policy_results'\''); } if (ctx.request instanceof Map) { ctx.request.remove('\''mount_running_version'\''); ctx.request.remove('\''mount_class'\''); ctx.request.remove('\''mount_point'\''); }"
       }
     },
     {
@@ -580,6 +615,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "time": { "type": "date" },
         "type": { "type": "keyword" },
         "auth": {
+          "dynamic": false,
           "properties": {
             "client_token": { "type": "keyword" },
             "accessor": { "type": "keyword" },
@@ -591,6 +627,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
           }
         },
         "request": {
+          "dynamic": false,
           "properties": {
             "id": { "type": "keyword" },
             "operation": { "type": "keyword" },
@@ -602,11 +639,12 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
             "namespace": { "type": "keyword" },
             "namespace_id": { "type": "keyword" },
             "path": { "type": "keyword" },
-            "remote_address": { "type": "ip" },
-            "remote_port": { "type": "integer" }
+            "remote_address": { "type": "keyword" },
+            "remote_port": { "type": "keyword" }
           }
         },
         "response": {
+          "dynamic": false,
           "properties": {
             "mount_accessor": { "type": "keyword" },
             "mount_type": { "type": "keyword" }
@@ -650,6 +688,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "severity": { "type": "keyword" },
         "actor": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "user_id": { "type": "keyword" },
             "user_type": { "type": "keyword" },
@@ -661,6 +700,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         },
         "target": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "type": { "type": "keyword" },
             "id": { "type": "keyword" },
@@ -724,6 +764,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         "response_size": { "type": "long" },
         "user": {
           "type": "object",
+          "dynamic": false,
           "properties": {
             "id": { "type": "keyword" },
             "type": { "type": "keyword" },
@@ -734,8 +775,12 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
         },
         "client": {
           "type": "object",
+          "dynamic": false,
           "properties": {
-            "ip": { "type": "ip" },
+            "ip": { "type": "keyword" },
+            "proxy_ip": { "type": "keyword" },
+            "ip_source": { "type": "keyword" },
+            "proxy_trusted": { "type": "boolean" },
             "user_agent": { "type": "text" },
             "origin": { "type": "keyword" }
           }
@@ -782,6 +827,171 @@ curl -sk -u "admin:$OPENSEARCH_PASS" \
     ```bash
     curl -sk -u "admin:your-actual-password" ...
     ```
+
+---
+
+## Step 11: Create ISM Retention Policies
+
+Index State Management (ISM) enforces retention automatically. Without it, indices
+grow unbounded. Each policy attaches to new indices through its `ism_template`
+(matched by index pattern) at creation time, so the date-based indices Fluent Bit
+writes (`orcastra-access-YYYY.MM.DD`, etc.) pick up their lifecycle with no manual
+step. Create the policies now, before any logs flow.
+
+### Register the Snapshot Repository
+
+The `archive` state in each policy snapshots an index before deletion, so the
+repository must exist first. The compose file already mounts the archive volume at
+`/usr/share/opensearch/snapshots` and `opensearch.yml` registers it as `path.repo`.
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_snapshot/orcastra-archive" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "type": "fs",
+  "settings": {
+    "location": "/usr/share/opensearch/snapshots",
+    "compress": true,
+    "max_snapshot_bytes_per_sec": "40mb",
+    "max_restore_bytes_per_sec": "40mb"
+  }
+}'
+```
+
+Should return `{"acknowledged":true}`.
+
+### Access Logs Policy (90 days)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-access-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-access indices - 90 day retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "7d" } },
+        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "85d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "90d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-access-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Audit Logs Policy (3 years)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-audit-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-audit indices - 3 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "30d" } },
+        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
+      ] },
+      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-audit-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### App Logs Policy (30 days)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/orcastra-app-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for orcastra-app indices - 30 day retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "7d" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "25d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "30d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-app-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Vault Audit Policy (3 years)
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
+  "https://localhost:9200/_plugins/_ism/policies/vault-audit-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "ISM policy for vault-audit indices - 3 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "30d" } }
+      ] },
+      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
+        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
+      ] },
+      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["vault-audit-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Verify Policies
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASS" \
+  "https://localhost:9200/_plugins/_ism/policies" \
+  | python3 -c "import sys,json; print('\n'.join(p['_id'] for p in json.load(sys.stdin)['policies']))"
+```
+
+Should list all four: `orcastra-access-policy`, `orcastra-audit-policy`, `orcastra-app-policy`, `vault-audit-policy`.
+
+!!! note "Attachment timing"
+    ISM attaches a policy only to indices created **after** the policy exists. Since
+    these are created during VM 3 setup (before VM 2 / VM 4 start forwarding), every
+    new daily index is covered. If you add a policy after indices already exist, attach
+    it manually with `POST _plugins/_ism/add/<index>`.
 
 ---
 

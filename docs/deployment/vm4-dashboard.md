@@ -185,7 +185,6 @@ nano docker-compose.prod.yml
         volumes:
           - ./config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
           - ./config/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
-          - ./config/fluent-bit/parse_json.lua:/fluent-bit/etc/parse_json.lua:ro
           - fluent-bit-data:/fluent-bit/data
           - /var/lib/docker/containers:/var/lib/docker/containers:ro
           - /var/log/containers:/var/log/containers:ro
@@ -349,7 +348,6 @@ Create `config/fluent-bit/fluent-bit.conf`:
         storage.total_limit_size  2G
         Trace_Error       On
         Replace_Dots      On
-        Write_Operation   create
         Id_Key            request_id
         Generate_ID       On
 
@@ -369,7 +367,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Logstash_Format   On
         Logstash_Prefix   orcastra-audit
         Logstash_DateFormat %Y.%m.%d
-        # Audit logs MUST NOT be dropped (compliance) - unlimited retries.
+        # Audit logs MUST NOT be dropped (compliance), unlimited retries.
         Retry_Limit       no_limits
         Buffer_Size       10MB
         storage.total_limit_size  8G
@@ -457,41 +455,11 @@ Create `config/fluent-bit/parsers.conf`:
         rule              "cont"         "/^\w+Exception:/"                           "cont"
     ```
 
-### Lua Script
+### JSON Parsing
 
-Create `config/fluent-bit/parse_json.lua`:
-
-```lua
--- Parse nested JSON from Docker log field and merge into record
-
-function parse_log_json(tag, timestamp, record)
-    local log_field = record["log"]
-
-    if log_field == nil or type(log_field) ~= "string" then
-        return 0, timestamp, record
-    end
-
-    log_field = string.gsub(log_field, "^%s+", "")
-    log_field = string.gsub(log_field, "%s+$", "")
-
-    if string.sub(log_field, 1, 1) ~= "{" then
-        return 0, timestamp, record
-    end
-
-    local cjson_safe = require("cjson.safe")
-    local parsed, err = cjson_safe.decode(log_field)
-
-    if parsed and type(parsed) == "table" then
-        for key, value in pairs(parsed) do
-            record[key] = value
-        end
-        record["log"] = nil
-        return 1, timestamp, record
-    else
-        return 0, timestamp, record
-    end
-end
-```
+Nested JSON in the Docker `log` field is lifted to top-level fields by the built-in
+`[FILTER] Name nest` / `Operation lift` step already defined in `fluent-bit.conf`. The
+pipeline does not use a Lua script, so none needs to be created or mounted.
 
 ---
 
@@ -522,7 +490,7 @@ nano .env
 
 ```ini
 # === Version ===
-# Pin a release tag - do NOT use latest in production.
+# Pin a release tag, do NOT use latest in production.
 APP_VERSION=<PINNED_RELEASE_TAG>
 API_VERSION=<SAME_RELEASE_TAG>
 CONTAINER_PREFIX=orcastra-dashboard
@@ -595,7 +563,7 @@ LOG_LEVEL=INFO
 ```
 
 !!! warning "Placeholder Replacement"
-    Replace **all** `<...>` placeholders with actual values. The `OPENSEARCH_HOST` should be the **IP address only** - no `http://` prefix.
+    Replace **all** `<...>` placeholders with actual values. The `OPENSEARCH_HOST` should be the **IP address only**, no `http://` prefix.
 
 !!! warning "Pin Image Tags in Production"
     Do not keep `APP_VERSION=latest` on production VMs. Always pin `APP_VERSION`/`API_VERSION` to the exact release tag you intend to deploy so the pulled backend/frontend images match the expected code and security hardening.
@@ -655,12 +623,26 @@ Expected result: values reflect your `.env` and are not empty.
 ### Get Docker Bridge Subnet
 
 ```bash
-DOCKER_BRIDGE=$(docker network inspect root_orcastra-dashboard \
-  --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null \
-  || docker network inspect orcastra-dashboard \
+# The compose network has no explicit name:, so Docker prefixes it with the
+# compose project name (the folder you run compose from) -> <project>_orcastra-dashboard.
+# Auto-detect the real network name instead of hard-coding the prefix:
+NET=$(docker network ls --filter name=orcastra-dashboard --format '{{.Name}}' | head -1)
+DOCKER_BRIDGE=$(docker network inspect "$NET" \
   --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
-echo "Docker subnet: $DOCKER_BRIDGE"
+echo "Network: $NET  |  Docker subnet: $DOCKER_BRIDGE"
+
+# Guard: an empty result means the stack isn't up yet, bring it up first.
+[ -n "$DOCKER_BRIDGE" ] || echo "EMPTY: run 'docker compose -f docker-compose.prod.yml up -d' first, then re-run this."
 ```
+
+!!! note "The network name is project-prefixed"
+    The `networks: orcastra-dashboard:` block in compose has no explicit `name:`, so the
+    real network is `<compose-project>_orcastra-dashboard` - and the project name defaults
+    to the directory you run compose from (e.g. `orcastra_orcastra-dashboard` when deploying
+    from `~/orcastra`). That is why a hard-coded `root_orcastra-dashboard` returns nothing.
+    The network also only exists **after** a successful
+    `docker compose -f docker-compose.prod.yml up -d`, so an empty `$DOCKER_BRIDGE` usually
+    means the stack is not up yet.
 
 ### Add iptables Rules
 

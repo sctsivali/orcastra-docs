@@ -183,6 +183,8 @@ path "pki_int/certs"              { capabilities = ["list"] }
 path "secret/data/orcastra/*"     { capabilities = ["create","read","update"] }
 path "secret/data/integrations/*" { capabilities = ["create","read","update","delete"] }
 path "secret/metadata/integrations/*" { capabilities = ["list","read","delete"] }
+path "secret/data/my_keys/*"      { capabilities = ["create","read","update","delete","list"] }
+path "secret/metadata/my_keys/*"  { capabilities = ["list","read","delete"] }
 POLICY
 ```
 
@@ -196,10 +198,18 @@ vault policy write orcastra-policy /tmp/orcastra-policy.hcl
 
 ```bash
 vault token create \
+  -orphan \
   -policy=orcastra-policy \
-  -period=8760h \
+  -ttl=0 \
   -display-name="orcastra-dashboard"
 ```
+
+!!! warning "Use `-ttl=0`, not `-period`"
+    A `-period` token expires (~1 year here) unless something renews it, and the
+    backend has no renew-self logic, so Vault calls start returning `403` long
+    after a successful install. `-orphan -ttl=0` issues a non-expiring token,
+    matching the recovery procedure in
+    [Troubleshooting](../operations/troubleshooting.md).
 
 ### Verify Dashboard Token Permissions
 
@@ -234,6 +244,7 @@ Vault audit logs are forwarded to OpenSearch (VM 3) via Fluent Bit for centraliz
 
 ```bash
 export VAULT_ADDR='http://127.0.0.1:8200'
+unset VAULT_TOKEN   # Clear the dashboard token from Step 5 so the root login below takes effect
 vault login   # Enter root token
 
 mkdir -p /var/log/vault
@@ -242,6 +253,14 @@ chmod 750 /var/log/vault
 
 vault audit enable file file_path=/var/log/vault/audit.log
 ```
+
+!!! warning "403 Permission Denied When Enabling Audit"
+    If `vault login` prints `WARNING! The VAULT_TOKEN environment variable is set!` and
+    `vault audit enable` then fails with `Code: 403 ... permission denied`, the `VAULT_TOKEN`
+    you exported in [Step 5](#verify-dashboard-token-permissions) is still set and **takes
+    precedence over the root token** from `vault login`. The dashboard token uses
+    `orcastra-policy`, which has no `sys/audit` access. Run `unset VAULT_TOKEN`, then re-run the
+    audit command.
 
 ### Configure Logrotate
 
@@ -293,6 +312,11 @@ nano /etc/fluent-bit/fluent-bit.conf
     Daemon       Off
     Log_Level    info
     Parsers_File parsers.conf
+    # Filesystem buffering so a multi-day OpenSearch outage never drops audit logs
+    storage.path              /var/lib/fluent-bit/storage/
+    storage.sync              normal
+    storage.checksum          off
+    storage.backlog.mem_limit 128M
 
 [INPUT]
     Name              tail
@@ -302,6 +326,7 @@ nano /etc/fluent-bit/fluent-bit.conf
     DB                /var/lib/fluent-bit/vault.db
     Mem_Buf_Limit     10MB
     Refresh_Interval  5
+    storage.type      filesystem
 
 [OUTPUT]
     Name              opensearch
@@ -313,10 +338,15 @@ nano /etc/fluent-bit/fluent-bit.conf
     tls               On
     tls.verify        Off
     Suppress_Type_Name On
+    net.connect_timeout       10
+    net.keepalive             on
+    net.keepalive_idle_timeout 30
     Logstash_Format   On
     Logstash_Prefix   vault-audit
     Logstash_DateFormat %Y.%m.%d
-    Retry_Limit       5
+    # Vault audit logs must never be dropped (compliance): unlimited retries + disk backlog
+    Retry_Limit       no_limits
+    storage.total_limit_size  4G
     Buffer_Size       5MB
     Trace_Error       On
     Replace_Dots      On
@@ -325,6 +355,12 @@ nano /etc/fluent-bit/fluent-bit.conf
 
 !!! warning "Placeholder Values"
     Replace `<VM3_PRIVATE_IP>` and `<FLUENTBIT_PASSWORD_FROM_VM3>` with actual values from [VM 3 setup](vm3-opensearch.md).
+
+    The Fluent Bit password is a single shared credential used in **three** places:
+    the `fluentbit` user in OpenSearch (VM 3), this literal `HTTP_Passwd` (VM 2), and
+    `OPENSEARCH_PASSWORD` in the dashboard `.env` (VM 4). Rotating it means updating
+    all three at once, or shipping silently breaks (see
+    [Troubleshooting](../operations/troubleshooting.md)).
 
 ### Configure Parser
 
@@ -348,7 +384,7 @@ Ensure it contains:
 ### Start Fluent Bit
 
 ```bash
-mkdir -p /var/lib/fluent-bit
+mkdir -p /var/lib/fluent-bit/storage
 systemctl enable fluent-bit
 systemctl start fluent-bit
 systemctl status fluent-bit
@@ -359,9 +395,9 @@ The status should show `active (running)`.
 ### Verify Log Forwarding
 
 ```bash
-# Generate a test audit event
+# Generate a test audit event (any authenticated call writes to the audit log)
 export VAULT_ADDR='http://127.0.0.1:8200'
-vault read sys/audit
+vault audit list
 
 # Check audit log growth
 sleep 5

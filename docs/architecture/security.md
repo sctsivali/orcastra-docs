@@ -15,24 +15,26 @@ Orcastra uses Authentik as a centralized identity provider via the OpenID Connec
 
 The backend verifies:
 
-- **Signature** - via Authentik's JWKS (JSON Web Key Set) endpoint
-- **Audience** - must match `AUTHENTIK_CLIENT_ID`
-- **Issuer** - must match `AUTHENTIK_ISSUER`
-- **Expiration** - rejects expired tokens
+- **Signature** via Authentik's JWKS (JSON Web Key Set) endpoint
+- **Audience** must match `AUTHENTIK_CLIENT_ID`
+- **Issuer** must match `AUTHENTIK_ISSUER`
+- **Expiration** rejects expired tokens
 
 ---
 
 ## Authorization - Role-Based Access Control
 
-Three Authentik groups map to application roles:
+The backend maps Authentik groups to a strict three-tier role model (`backend/app/core/rbac.py`):
 
-| Authentik Group | Dashboard Role | Permissions |
-|---|---|---|
-| `orcastra-admin` | Admin | Full access: manage users, nodes, settings, view all logs |
-| `orcastra-operator` | Operator | Operational access: manage nodes, view logs, limited settings |
-| `orcastra-viewer` | Viewer | Read-only: view dashboards and logs |
+| Role | Scope |
+|---|---|
+| Admin | System-wide: all clusters, users, settings, and logs |
+| Partner | Cluster owner: own clusters, projects, and tenants |
+| Tenant | End user: assigned projects only |
 
-Groups are assigned in the Authentik admin panel and passed to the application via OIDC token claims.
+A role is granted by placing the user in the matching Authentik group. The canonical group names are `role_admin`, `role_partner`, and `role_tenant`; the resolver also accepts the plural aliases `orcastra-admins`, `orcastra-partners`, `orcastra-tenants` and the bare `admin` / `partner` / `tenant`. Any group beginning with `role_` is read as a role claim. A user whose groups match none of these falls back to Tenant (least privilege).
+
+Groups are delivered in the OIDC `groups` claim and resolved on every request.
 
 ---
 
@@ -48,18 +50,21 @@ Groups are assigned in the Authentik admin panel and passed to the application v
 
 ### Access Policy
 
-The backend uses a scoped Vault token with the `orcastra-dashboard` policy:
+The backend uses a scoped Vault token with the `orcastra-policy` policy:
 
 ```hcl
-# KV v2 - read/write application secrets
-path "secret/data/*"     { capabilities = ["create", "read", "update", "delete", "list"] }
-path "secret/metadata/*" { capabilities = ["list", "read", "delete"] }
+# KV v2 - application secrets (clusters, app, integrations, user keys)
+path "secret/data/clusters/*"         { capabilities = ["create", "read", "update", "delete", "list"] }
+path "secret/metadata/clusters/*"     { capabilities = ["list", "read", "delete"] }
+path "secret/data/orcastra/*"         { capabilities = ["create", "read", "update"] }
+path "secret/data/integrations/*"     { capabilities = ["create", "read", "update", "delete"] }
+path "secret/metadata/integrations/*" { capabilities = ["list", "read", "delete"] }
+path "secret/data/my_keys/*"          { capabilities = ["create", "read", "update", "delete", "list"] }
+path "secret/metadata/my_keys/*"      { capabilities = ["list", "read", "delete"] }
 
-# PKI - issue and manage certificates
+# PKI - issue LXD client certificates
 path "pki_int/issue/lxd" { capabilities = ["create", "update"] }
 path "pki_int/certs"     { capabilities = ["list"] }
-path "pki_int/revoke"    { capabilities = ["create", "update"] }
-path "pki/cert/ca"       { capabilities = ["read"] }
 ```
 
 ---
@@ -108,7 +113,7 @@ Logs are:
 
 - Rotated via `logrotate` (daily, 90 days retention)
 - Forwarded to OpenSearch via Fluent Bit on VM 2
-- Indexed as `vault-audit-*` with 1-year ISM policy
+- Indexed as `vault-audit-*` with a 3-year ISM retention policy (`vault-audit-policy`)
 
 ### Application Audit
 
@@ -119,7 +124,7 @@ The backend generates structured audit logs for:
 - Data modifications (CRUD operations on nodes, secrets)
 - Administrative actions (settings changes, user management)
 
-These are indexed in OpenSearch as `orcastra-audit-*` with a 3-year retention ISM policy.
+These are indexed in OpenSearch as `orcastra-audit-*` with a 3-year ISM retention policy (`orcastra-audit-policy`).
 
 ---
 

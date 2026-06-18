@@ -169,7 +169,7 @@ curl -sk https://localhost:9200/_cluster/health?pretty \
 
 ### Fluent Bit Cannot Write to OpenSearch
 
-**Quick check (recommended) — create a local helper script and run it:**
+**Quick check (recommended) - create a local helper script and run it:**
 
 ```bash
 cat > /usr/local/bin/orcastra-logging-healthcheck <<'EOF'
@@ -304,7 +304,7 @@ Bit retry counters.
 
 #### Symptom: `Authentication finally failed for fluentbit from <VM4_IP>` in OpenSearch logs
 
-This is a **password drift** between VMs — the password Fluent Bit sends no
+This is a **password drift** between VMs, the password Fluent Bit sends no
 longer matches the `fluentbit` user in OpenSearch. Logs are silently dropped
 once `Retry_Limit` is reached, so dashboards stop updating without an error.
 
@@ -331,6 +331,56 @@ curl -sk -u "fluentbit:<PWD_FROM_VM4>" https://localhost:9200/_cluster/health?pr
 If you want to automate this check, keep the helper file above on both VMs and
 run it from cron every 5 minutes.
 
+#### Symptom: `403 security_exception: no permissions for [indices:data/write/bulk]`
+
+Fluent Bit authenticates fine (no `Authentication finally failed`), but every
+push is rejected:
+
+```text
+[output:opensearch] HTTP status=403 URI=/_bulk
+{"error":{...,"reason":"no permissions for [indices:data/write/bulk] and
+User [name=fluentbit, backend_roles=[log_writer]...","type":"security_exception"},"status":403}
+```
+
+This is a **cluster-scope permission gap**, not an index-permission problem.
+`/_bulk` and every single-document write, which OpenSearch wraps into a bulk
+op is authorized at **cluster scope** first. `indices:data/write/bulk` must be
+in `cluster_permissions`. The index-level `crud` grant is never consulted if the
+cluster gate fails, so **reads succeed but every write 403s**, even on an
+existing index whose pattern the role clearly covers.
+
+**Confirm (run on VM 3):**
+
+```bash
+curl -sk -u "fluentbit:<FB_PW>" "https://localhost:9200/_plugins/_security/authinfo?pretty"  # roles: ["log_writer"]
+curl -sk -u "fluentbit:<FB_PW>" "https://localhost:9200/vault-audit-*/_count"                 # read works -> 200
+curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
+  "https://localhost:9200/_plugins/_security/api/roles/log_writer?pretty" | grep -A6 cluster_permissions
+```
+
+If `cluster_permissions` has no `cluster_composite_ops`, that is the cause.
+
+**Fix (run on VM 3):**
+
+```bash
+curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
+  -X PATCH "https://localhost:9200/_plugins/_security/api/roles/log_writer" \
+  -H "Content-Type: application/json" \
+  -d '[{"op":"add","path":"/cluster_permissions/-","value":"cluster_composite_ops"}]'
+```
+
+Persist the same change in `config/roles.yml` (see
+[VM 3 → Roles](../deployment/vm3-opensearch.md#roles)) so it survives a
+security-config reload. Verify:
+
+```bash
+printf '%s\n%s\n' '{"index":{}}' '{"@timestamp":"2026-01-01T00:00:00Z","msg":"ok"}' \
+| curl -sk -u "fluentbit:<FB_PW>" -X POST \
+    "https://localhost:9200/vault-audit-test/_bulk" \
+    -H "Content-Type: application/x-ndjson" --data-binary @- -w '\n%{http_code}\n'
+# Expect 200 with items[].status 201
+```
+
 ---
 
 ## Vault Issues
@@ -354,9 +404,9 @@ vault status           # Verify: Sealed = false
 
 ### Node Registration Returns HTTP 503
 
-The Register Node page shows **"Registration Failed — HTTP 503"**. This means the backend cannot communicate with Vault.
+The Register Node page shows **"Registration Failed - HTTP 503"**. This means the backend cannot communicate with Vault.
 
-**Diagnosis — run on VM 4 (Dashboard):**
+**Diagnosis - run on VM 4 (Dashboard):**
 
 ```bash
 # Step 1: Check Vault health from INSIDE the backend container
@@ -392,10 +442,10 @@ else:
 
 | Step 1 Result | Step 2 Result | Cause | Fix |
 |---|---|---|---|
-| `UNREACHABLE: Connection refused` | — | Backend can't reach Vault network | Check `VAULT_ADDR` in `.env`, verify LXD port forwarding (see [Networking](networking.md)) |
+| `UNREACHABLE: Connection refused` | - | Backend can't reach Vault network | Check `VAULT_ADDR` in `.env`, verify LXD port forwarding (see [Networking](networking.md)) |
 | Health `200` | `403 permission denied` | **Vault token expired or revoked** | Generate a new token (see below) |
-| Health `503` | — | Vault is sealed | Unseal Vault (see above) |
-| `VAULT_ADDR=NOT SET` | — | Missing env var | Check `.env` has `VAULT_ADDR` and `VAULT_ENABLED=true` |
+| Health `503` | - | Vault is sealed | Unseal Vault (see above) |
+| `VAULT_ADDR=NOT SET` | - | Missing env var | Check `.env` has `VAULT_ADDR` and `VAULT_ENABLED=true` |
 
 **Fix: Generate a new Vault token**
 
@@ -409,7 +459,7 @@ vault login   # Enter root token when prompted
 vault token create \
   -orphan \
   -display-name="orcastra-dashboard" \
-  -policy="orcastra-dashboard" \
+  -policy="orcastra-policy" \
   -ttl=0
 ```
 
@@ -431,10 +481,10 @@ docker compose -f docker-compose.prod.yml restart backend
 !!! info "Vault Token Lifecycle"
     Tokens can become invalid for several reasons:
 
-    - **Expired** — TTL elapsed (most common, check `expire_time` from lookup)
-    - **Revoked** — Admin manually revoked, or parent token was revoked
-    - **Vault restart** — Non-persistent tokens are lost on restart (in-memory storage only)
-    - **Sealed** — Vault sealed = all tokens temporarily unusable until unsealed
+    - **Expired**, TTL elapsed (most common, check `expire_time` from lookup)
+    - **Revoked**, admin manually revoked, or parent token was revoked
+    - **Vault restart**, non-persistent tokens are lost on restart (in-memory storage only)
+    - **Sealed**, Vault sealed = all tokens temporarily unusable until unsealed
 
 ---
 
@@ -466,7 +516,7 @@ print(resp.status_code, resp.json())
 "
 ```
 
-If the first works but the second doesn't, Docker containers can't route to the LXD bridge. Fix with iptables DNAT (see [Networking — Docker Network Routing](networking.md#docker-network-routing-vm-4)).
+If the first works but the second doesn't, Docker containers can't route to the LXD bridge. Fix with iptables DNAT (see [Networking - Docker Network Routing](networking.md#docker-network-routing-vm-4)).
 
 ---
 
