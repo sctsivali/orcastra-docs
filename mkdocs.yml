@@ -66,6 +66,11 @@ theme:
 # =============================================================================
 plugins:
   - search
+  # important: print-site must stay last in the plugin list (it captures final rendered HTML)
+  - print-site:
+      add_to_navigation: true
+      print_page_title: "Download as PDF"
+      add_print_site_banner: true
 
 # =============================================================================
 # Markdown Extensions
