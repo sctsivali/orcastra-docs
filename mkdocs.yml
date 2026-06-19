@@ -67,10 +67,10 @@ theme:
 plugins:
   - search
   # important: print-site must stay last in the plugin list (it captures final rendered HTML)
+  # It only builds the combined /print_page/ used as the source for the CI-built PDF;
+  # kept out of the nav so it is not user-facing (the real download is a button).
   - print-site:
-      add_to_navigation: true
-      print_page_title: "Download as PDF"
-      add_print_site_banner: true
+      add_to_navigation: false
 
 # =============================================================================
 # Markdown Extensions

@@ -137,3 +137,88 @@
 [data-md-color-scheme="slate"] .md-typeset code {
   color: #d7e1f3;
 }
+
+/* "Download PDF" button (links to the CI-built release asset) */
+.md-typeset .orcastra-pdf-btn {
+  float: right;
+  margin: 0 0 0.6rem 1rem;
+}
+
+/* ===========================================================================
+   Print rules for the combined print-site page (#print-site-page).
+   Without these, wide Mermaid SVGs, tables, and code lines overflow the
+   printable column and get clipped at the page edge. Used by the CI headless
+   Chrome that prints /print_page/ to the downloadable PDF, and by any user who
+   prints from the browser.
+   =========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 16mm 12mm;
+  }
+
+  /* The Download button is meaningless inside the PDF itself */
+  .orcastra-pdf-btn {
+    display: none !important;
+  }
+
+  #print-site-page,
+  #print-site-page .md-typeset {
+    max-width: 100% !important;
+  }
+
+  /* important: Mermaid SVGs are the main clipping culprit - scale to fit */
+  #print-site-page .mermaid,
+  #print-site-page .mermaid svg {
+    max-width: 100% !important;
+    height: auto !important;
+    break-inside: avoid;
+  }
+
+  /* Wide tables: fixed layout + wrap cell text instead of overflowing */
+  #print-site-page .md-typeset table:not([class]) {
+    table-layout: fixed;
+    width: 100% !important;
+    font-size: 0.62rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  #print-site-page .md-typeset th,
+  #print-site-page .md-typeset td {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  /* Code blocks: wrap long lines instead of clipping at the right margin */
+  #print-site-page .md-typeset pre,
+  #print-site-page .md-typeset pre > code {
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    font-size: 0.62rem;
+    line-height: 1.35;
+  }
+  #print-site-page .md-typeset .highlight,
+  #print-site-page .md-typeset .highlighttable {
+    overflow: visible !important;
+  }
+
+  /* pymdownx.tabbed hides inactive panels - print all of them */
+  #print-site-page .tabbed-content {
+    display: block !important;
+  }
+
+  /* Avoid awkward page breaks */
+  #print-site-page h1,
+  #print-site-page h2,
+  #print-site-page h3 {
+    break-after: avoid;
+  }
+  #print-site-page .admonition,
+  #print-site-page details,
+  #print-site-page figure,
+  #print-site-page .mermaid {
+    break-inside: avoid;
+  }
+}
