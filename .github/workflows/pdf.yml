@@ -1,0 +1,64 @@
+name: Build docs PDF
+
+# Generate a single downloadable PDF of the whole documentation set with headless
+# Chromium (renders the client-side Mermaid diagrams), then publish it as a release
+# asset. Kept out of the ReadTheDocs build so that build stays light and reliable.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements.txt"
+      - "overrides/**"
+      - "scripts/print-docs-pdf.mjs"
+      - ".github/workflows/pdf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pdf:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - name: Build site
+        run: mkdocs build # -> ./site including site/print_page/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-save puppeteer@23
+
+      - name: Serve site and print to PDF
+        run: |
+          python -m http.server 8000 --directory site &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/print_page/ >/dev/null && break
+            sleep 1
+          done
+          node scripts/print-docs-pdf.mjs http://localhost:8000/print_page/ orcastra-docs.pdf
+          ls -l orcastra-docs.pdf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orcastra-docs-pdf
+          path: orcastra-docs.pdf
+
+      - name: Publish PDF to release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload docs-pdf orcastra-docs.pdf --clobber \
+            || gh release create docs-pdf orcastra-docs.pdf \
+                 --title "Documentation PDF" \
+                 --notes "Full documentation as a single PDF. Rebuilt automatically on each docs change."
