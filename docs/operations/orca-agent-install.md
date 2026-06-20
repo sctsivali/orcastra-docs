@@ -1,78 +1,40 @@
-# ORCA Agent Installer Script
+# ORCA Agent Installer
 
-Use this helper script to generate a secure environment file for ORCA Agent registration and runtime commands.
+The ORCA Agent connects a cluster to OrcaHub so its services can be exposed. You do not assemble the
+installer by hand, OrcaHub generates a one-time, signed, checksum-verified installer for you and
+fills in the credentials at install time.
 
-## Script Location
+## Install
 
-- Repository path: `scripts/orca-agent/install.sh`
-- Raw URL (main branch): `https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/scripts/orca-agent/install.sh`
-
-## Recommended Usage
-
-Use OrcaHub's generated short-lived bootstrap URL and let this script fetch the full installer logic securely.
-
-```bash
-INSTALLER_SCRIPT_URL="https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/scripts/orca-agent/install.sh"
-BOOTSTRAP_URL="<COPY_FROM_ORCAHUB_REGISTER_DIALOG>"
-
-curl -fsSL "$INSTALLER_SCRIPT_URL" -o /tmp/orca-agent-install.sh
-chmod +x /tmp/orca-agent-install.sh
-/tmp/orca-agent-install.sh --bootstrap-url "$BOOTSTRAP_URL"
-```
-
-## Manual Usage
-
-Pin a script version and validate checksum before running it.
+1. In OrcaHub, open the **Register ORCA Agent** flow (Network -> Expose Services).
+2. Choose the target cluster and set an agent name.
+3. Copy the generated installer command and run it on the cluster-side host as root:
 
 ```bash
-SCRIPT_VERSION="main"
-SCRIPT_URL="https://raw.githubusercontent.com/sctsivali/orcastra-docs/${SCRIPT_VERSION}/scripts/orca-agent/install.sh"
-
-curl -fsSL "$SCRIPT_URL" -o /tmp/orca-agent-install.sh
-chmod +x /tmp/orca-agent-install.sh
-
-# Optional but recommended: validate SHA256 first
-# echo "<SHA256>  /tmp/orca-agent-install.sh" | sha256sum -c -
-
-/tmp/orca-agent-install.sh \
-  --api-url "https://api.orcahub.example" \
-  --enrollment-token "<ENROLLMENT_TOKEN>" \
-  --agent-name "my-node-orca-agent" \
-  --frpc-token "<FRPC_TOKEN>" \
-  --cluster-id "<ORCASTRA_CLUSTER_ID>" \
-  --output "/etc/orca-agent/setup.env"
+BOOTSTRAP_URL='<copied-from-orcahub>'
+curl -fsSL "$BOOTSTRAP_URL" -o /tmp/orca-agent-install.sh \
+  && chmod 700 /tmp/orca-agent-install.sh \
+  && bash /tmp/orca-agent-install.sh
 ```
 
-## One-liner Variant
+!!! warning "The link expires quickly"
+    The bootstrap link is short-lived and single-use. Copy and run the command soon after opening
+    the dialog. If it expires, reopen the dialog to generate a new one.
 
-If you intentionally use manual flags instead of OrcaHub bootstrap mode:
+The installer downloads a version-pinned agent, verifies its checksum, installs it as a service, and
+registers it with OrcaHub. Credentials are injected by OrcaHub at install time, not carried in the
+link.
+
+## Verify
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/scripts/orca-agent/install.sh" \
-  | bash -s -- \
-    --api-url "https://api.orcahub.example" \
-    --enrollment-token "<ENROLLMENT_TOKEN>" \
-    --agent-name "my-node-orca-agent" \
-    --frpc-token "<FRPC_TOKEN>" \
-    --cluster-id "<ORCASTRA_CLUSTER_ID>" \
-    --output "/etc/orca-agent/setup.env"
+systemctl status orca-agent
+journalctl -u orca-agent -e
 ```
 
-## Output
+The agent reports back to OrcaHub once it is running. The cluster then shows as online in the
+**Expose Services** view.
 
-The script creates an env file (default: `/etc/orca-agent/setup.env`) with strict file permission `600`.
-
-Generated keys:
-
-- `ORCAHUB_API_URL`
-- `ORCA_AGENT_ENROLLMENT_TOKEN`
-- `ORCA_AGENT_NAME`
-- `ORCA_AGENT_FRPC_TOKEN`
-- `ORCA_AGENT_CLUSTER_ID`
-
-## Security Notes
-
-- Treat the output file as secret material.
-- Do not commit the generated env file into source control.
-- Rotate enrollment and FRPC tokens periodically.
-- Prefer pinned versions (`main` can move).
+!!! note "Keep generated files private"
+    The installer writes a local environment file containing tokens. Treat it as secret, keep it out
+    of source control and backups, and rotate agent credentials from OrcaHub when needed.

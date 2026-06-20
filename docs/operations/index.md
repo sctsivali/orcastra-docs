@@ -8,7 +8,7 @@ This section covers post-deployment operations: domain configuration, networking
 
     ---
 
-    Generate secure ORCA Agent setup env files with a single script command
+    Install the cluster-side ORCA Agent with one short-lived bootstrap command
 
     [:octicons-arrow-right-24: ORCA Agent Installer](orca-agent-install.md)
 
