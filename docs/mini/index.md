@@ -95,7 +95,6 @@ The full deployment is documented under [Getting Started](../getting-started/ind
 
 | Resource | Location |
 |---|---|
-| Source branch | `orcastra-mini` on [github.com/sctsivali/orcastra-dashboard](https://github.com/sctsivali/orcastra-dashboard/tree/orcastra-mini) |
-| Release | `mini-v1.0.0-RC1` (release candidate) |
 | Container images | `svlct/orcastra-dashboard-mini` (tags `backend-1.0.0-RC1`, `frontend-1.0.0-RC1`) |
-| Compose file | `docker-compose.mini.yml` |
+| Release | `mini-v1.0.0-RC1` (release candidate) |
+| Deployment | Pull the images and run the Compose file from the [Quick Start](quick-start.md) |

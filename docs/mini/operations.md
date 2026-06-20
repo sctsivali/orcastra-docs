@@ -57,15 +57,14 @@ component-prefixed tags:
 | `backend-rc`, `frontend-rc` | Always the latest release candidate |
 
 ```bash
+docker login
 docker pull svlct/orcastra-dashboard-mini:backend-1.0.0-RC1
 docker pull svlct/orcastra-dashboard-mini:frontend-1.0.0-RC1
 ```
 
-To run these instead of building locally, set each service's `image:` in
-`docker-compose.mini.yml` to the corresponding tag and run `docker compose -f
-docker-compose.mini.yml up -d`. Both images read all secrets from environment variables at
-runtime; the frontend swaps its API URL placeholder on start, so the same image works on any
-host.
+The [Quick Start](quick-start.md) gives the full pull-based deployment using these images.
+Both read all secrets from environment variables at runtime, and the frontend swaps its API
+URL placeholder on start, so the same image works on any host.
 
 ## Troubleshooting
 

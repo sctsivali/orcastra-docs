@@ -41,7 +41,7 @@ curl -sk https://your-host.example.com:6969/api/v1/auth/cert-bootstrap \
     exists. The endpoint refuses to run when the token is unset or when an admin already
     exists, but removing the token leaves no standing secret.
 
-The full first-run sequence is in the [Quick Start](quick-start.md#6-bootstrap-the-first-administrator).
+The full first-run sequence is in the [Quick Start](quick-start.md#7-bootstrap-the-first-administrator).
 
 ## Issuing identities
 
