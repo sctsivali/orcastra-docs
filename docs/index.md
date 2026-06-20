@@ -19,6 +19,14 @@ hide:
 
     [:octicons-arrow-right-24: Getting Started](getting-started/index.md)
 
+-   :material-cube-outline:{ .lg .middle } **Orcastra Mini**
+
+    ---
+
+    Single-host build with TLS client-certificate sign-in, for edge sites and small installs. No Authentik, no OpenSearch.
+
+    [:octicons-arrow-right-24: Orcastra Mini](mini/index.md)
+
 -   :material-server:{ .lg .middle } **Deployment Guide**
 
     ---
@@ -69,6 +77,12 @@ The platform deploys across four virtual machines, each hosting a dedicated comp
 
 !!! tip "Deployment Order"
     Deploy in order: **VM 1 → VM 2 → VM 3 → VM 4**. Each VM depends on the previous one for configuration values (tokens, passwords, URLs).
+
+!!! note "Two deployment models"
+    The four-VM topology above is the full version. For edge sites, single-tenant labs, or
+    air-gapped installs, **[Orcastra Mini](mini/index.md)** runs the dashboard and Vault on a
+    single host and signs operators in with TLS client certificates, without Authentik or
+    OpenSearch.
 
 ## Quick Links
 

@@ -137,6 +137,13 @@ nav:
       - Prerequisites: getting-started/prerequisites.md
       - Architecture Overview: getting-started/architecture.md
       - Quick Start: getting-started/quick-start.md
+  - Orcastra Mini:
+      - mini/index.md
+      - Architecture: mini/architecture.md
+      - Quick Start: mini/quick-start.md
+      - Certificate Authentication: mini/certificate-auth.md
+      - Configuration: mini/configuration.md
+      - Operations & Troubleshooting: mini/operations.md
   - Deployment:
       - deployment/index.md
       - VM 1 - Authentik (SSO): deployment/vm1-authentik.md
