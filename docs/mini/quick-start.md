@@ -198,6 +198,7 @@ verified certificate to the application. The session token is redacted from WebS
 log lines.
 
 ```bash
+mkdir -p config/nginx/certs
 cat > config/nginx/mini.conf <<'EOF'
 map $http_upgrade $connection_upgrade {
     default upgrade;
@@ -286,6 +287,7 @@ EOF
 ### `config/vault/vault.hcl`
 
 ```bash
+mkdir -p config/vault
 cat > config/vault/vault.hcl <<'EOF'
 ui = true
 
