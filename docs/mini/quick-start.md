@@ -500,7 +500,14 @@ step 8.
 
     ```bash
     base64 -w0 admin.p12; echo                          # on the server, copy the output
-    echo 'PASTE_THE_BASE64' | base64 -d > admin.p12     # on your computer
+    echo 'PASTE_THE_BASE64' | base64 -d > admin.p12     # on macOS/Linux
+    ```
+
+    On Windows, save the copied text to `admin.b64`, then decode it with the built-in
+    `certutil` (Command Prompt or PowerShell):
+
+    ```powershell
+    certutil -decode admin.b64 admin.p12
     ```
 
 After it succeeds, close the window: blank `BOOTSTRAP_ADMIN_TOKEN` in `.env` and recreate the
