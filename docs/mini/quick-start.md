@@ -31,12 +31,17 @@ cd orcastra-mini
 
 ## 3. Create the deployment files
 
+Run each command below as-is. It writes the file with its contents in one paste (the quoted
+`'EOF'` keeps the `${...}` placeholders and `$variables` literal). Fill in your secrets in
+`.env` afterward.
+
 ### `docker-compose.yml`
 
 This Compose file runs the published backend and frontend images alongside PostgreSQL, Redis,
 Vault, and nginx. Only nginx is published to the host.
 
-```yaml
+```bash
+cat > docker-compose.yml <<'EOF'
 services:
   postgres:
     image: postgres:17-alpine
@@ -183,6 +188,7 @@ volumes:
   redis-data:
   postgres-data:
   vault-data:
+EOF
 ```
 
 ### `config/nginx/mini.conf`
@@ -191,7 +197,8 @@ nginx terminates TLS, requests the client certificate (trust-on-first-use), and 
 verified certificate to the application. The session token is redacted from WebSocket access
 log lines.
 
-```nginx
+```bash
+cat > config/nginx/mini.conf <<'EOF'
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -273,11 +280,13 @@ server {
         proxy_send_timeout 3600s;
     }
 }
+EOF
 ```
 
 ### `config/vault/vault.hcl`
 
-```hcl
+```bash
+cat > config/vault/vault.hcl <<'EOF'
 ui = true
 
 storage "raft" {
@@ -296,6 +305,7 @@ listener "tcp" {
 api_addr     = "http://vault:8200"
 cluster_addr = "http://vault:8201"
 disable_mlock = false
+EOF
 ```
 
 ### `.env`
@@ -303,7 +313,8 @@ disable_mlock = false
 Generate each secret with `openssl rand -hex 32`. The PostgreSQL password appears twice: once
 on its own and once inside `DATABASE_URL`.
 
-```ini
+```bash
+cat > .env <<'EOF'
 # Profile
 CONTAINER_PREFIX=orcastra-mini
 APP_VERSION=1.0.0-RC1
@@ -340,6 +351,7 @@ CORS_ORIGINS=https://your-host.example.com:6969
 
 # Audit
 AUDIT_DB_ENABLED=true
+EOF
 ```
 
 !!! warning "Keep secrets out of version control"
