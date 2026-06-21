@@ -36,14 +36,14 @@ real problem with a specific remediation:
 ## Run it
 
 ```bash
-curl -fsSL https://docs.orcastra.io/installer/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash
 ```
 
 The bootstrap ensures `python3` is present, downloads the installer, verifies its checksum, and
 runs it. To pass options, append them after `--`:
 
 ```bash
-curl -fsSL https://docs.orcastra.io/installer/get.sh | bash -s -- --host dash.example.com
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash -s -- --host dash.example.com
 ```
 
 Interactive runs detect the host IP and ask you to confirm it. The address you confirm becomes
@@ -84,7 +84,7 @@ becomes admin, then the window closes. The installer offers two paths.
     person on one trusted host.
 
     ```bash
-    curl -fsSL https://docs.orcastra.io/installer/get.sh | bash -s -- --quick
+    curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash -s -- --quick
     ```
 
 Import `admin.p12` into your browser, open the dashboard URL, and select the certificate when
@@ -120,7 +120,7 @@ Vault is sealed on every start. How its unseal keys are handled is a deliberate 
 Drive the installer from flags, an answer file, or environment - no prompts:
 
 ```bash
-curl -fsSL https://docs.orcastra.io/installer/get.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash -s -- \
   --non-interactive --assume-yes \
   --host 10.0.0.5 --https-port 6969 \
   --convenience --quick
@@ -166,7 +166,7 @@ first incomplete one. It never overwrites existing secrets (rotate explicitly wi
   add `--purge-volumes` and confirm. The Vault keys file is never deleted automatically.
 
 ```bash
-curl -fsSL https://docs.orcastra.io/installer/get.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash -s -- \
   --uninstall --install-dir /opt/orcastra-mini
 ```
 
