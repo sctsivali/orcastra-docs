@@ -6,6 +6,10 @@
   --md-primary-fg-color--light: #404040;
   --md-primary-fg-color--dark: #1a1a1a;
   --orcastra-text: #202937;
+  /* Drive body text through Material's own variable. Setting `color` on .md-typeset
+     directly also hits component typeset that sets its own color (the copy-feedback
+     dialog, tooltips), which broke their contrast in light mode. */
+  --md-typeset-color: var(--orcastra-text);
   --orcastra-muted: #4a5568;
   --orcastra-link-color: #0b3f91;
   --orcastra-link-hover: #072f6b;
@@ -18,6 +22,7 @@
   --md-primary-fg-color--light: #404040;
   --md-primary-fg-color--dark: #1a1a1a;
   --orcastra-text: #c7d2e4;
+  --md-typeset-color: var(--orcastra-text);
   --orcastra-muted: #b9c4d6;
   --orcastra-link-color: #8fbaff;
   --orcastra-link-hover: #b5d1ff;
@@ -26,15 +31,9 @@
   --orcastra-header-link-hover: #ffffff;
 }
 
-/* Body text and links */
-.md-typeset,
-.md-typeset p,
-.md-typeset li,
-.md-typeset td,
-.md-typeset blockquote {
-  color: var(--orcastra-text);
-}
-
+/* Body text color is set via --md-typeset-color in the scheme blocks above, not by a
+   blanket `.md-typeset { color }` rule (that also recolors the copy-feedback dialog and
+   tooltips, killing their contrast in one scheme). Links keep an explicit color. */
 .md-typeset a {
   color: var(--orcastra-link-color);
 }
