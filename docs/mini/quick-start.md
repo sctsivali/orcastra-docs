@@ -412,14 +412,19 @@ docker compose ps
 
 Vault starts sealed. Initialise once, then unseal after every restart (manual, by design).
 
+!!! note "Point the CLI at HTTP"
+    Vault runs over HTTP on the private Docker network (`tls_disable`), but the `vault` CLI
+    defaults to HTTPS. Pass `-e VAULT_ADDR=http://127.0.0.1:8200` so the in-container CLI uses
+    the right scheme. Without it you get `server gave HTTP response to HTTPS client`.
+
 ```bash
 # Initialise (save the unseal keys and root token somewhere safe and offline)
-docker compose exec vault vault operator init
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator init
 
 # Unseal (repeat with 3 different unseal keys)
-docker compose exec vault vault operator unseal <key-1>
-docker compose exec vault vault operator unseal <key-2>
-docker compose exec vault vault operator unseal <key-3>
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-1>
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-2>
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-3>
 ```
 
 Enable the PKI used to issue client certificates. The issuing CA must outlive the certificates
@@ -427,6 +432,7 @@ it signs, so give the CA a long TTL and the role a shorter maximum:
 
 ```bash
 docker compose exec vault sh -c '
+  export VAULT_ADDR=http://127.0.0.1:8200 ;
   export VAULT_TOKEN=<root-token> ;
   vault secrets enable -path=secret -version=2 kv ;
   vault secrets enable -path=pki_int pki ;
