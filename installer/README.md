@@ -10,7 +10,7 @@ Python 3 standard library only. No third-party packages.
 ## Install (end user)
 
 ```bash
-curl -fsSL https://docs.orcastra.io/installer/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash
 ```
 
 Pass flags after `--`, e.g. `bash -s -- --host 10.0.0.5 --quick`. Full guide:
@@ -67,12 +67,24 @@ python3 -m orcastra_mini_install ... --stop-after write   # generate files only
 
 ## Build and publish a release
 
+The zipapp and its checksum are distributed as GitHub Release assets (immutable, versioned). The
+one-liner serves `get.sh` from `raw.githubusercontent.com` on `main`, and `get.sh` pins the
+`.pyz` to a release tag and verifies its SHA-256 before running it.
+
 ```bash
+# 1. Build the artifact
 python3 installer/tools/build_pyz.py          # -> installer/dist/orcastra-mini-install.pyz (+ .sha256)
+
+# 2. Cut/refresh the release for the tag get.sh points at (see PYZ_URL in get.sh)
+gh release create installer-v1.0.0-RC1 \
+  installer/dist/orcastra-mini-install.pyz \
+  installer/dist/orcastra-mini-install.pyz.sha256 \
+  installer/get.sh \
+  --prerelease --title "Orcastra Mini installer 1.0.0-RC1" \
+  --notes "Automated installer zipapp + checksum."
 ```
 
-Publish `get.sh` and `orcastra-mini-install.pyz` (+ `.sha256`) at the URLs `get.sh` references
-(`https://docs.orcastra.io/installer/...`). `get.sh` verifies the checksum before running the
-zipapp, and honors `ORCASTRA_INSTALLER_URL` / `ORCASTRA_INSTALLER_PYZ` for staging or local use.
-
-The `dist/` directory is a build artifact and is gitignored.
+For a new installer version, bump the tag in `get.sh` (`PYZ_URL`) and cut a release on that tag;
+the public one-liner never changes. `get.sh` honors `ORCASTRA_INSTALLER_URL` /
+`ORCASTRA_INSTALLER_SHA_URL` / `ORCASTRA_INSTALLER_PYZ` for staging or local use. The `dist/`
+directory is a build artifact and is gitignored.

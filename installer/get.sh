@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Orcastra Mini installer bootstrap.
 #
-#   curl -fsSL https://docs.orcastra.io/installer/get.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash
 #
 # Ensures python3 is present, fetches the single-file installer (a stdlib zipapp), verifies
 # its checksum, and runs it. Pass installer flags after the URL, e.g.:
 #   curl -fsSL .../get.sh | bash -s -- --host 10.0.0.5 --quick
+#
+# The zipapp + checksum are served as GitHub Release assets (pinned, immutable). Override the
+# source with ORCASTRA_INSTALLER_URL (and ORCASTRA_INSTALLER_SHA_URL), or run a local build with
+# ORCASTRA_INSTALLER_PYZ=/path/to/orcastra-mini-install.pyz.
 set -euo pipefail
 
-PYZ_URL="${ORCASTRA_INSTALLER_URL:-https://docs.orcastra.io/installer/orcastra-mini-install.pyz}"
+PYZ_URL="${ORCASTRA_INSTALLER_URL:-https://github.com/sctsivali/orcastra-docs/releases/download/installer-v1.0.0-RC1/orcastra-mini-install.pyz}"
 SHA_URL="${ORCASTRA_INSTALLER_SHA_URL:-${PYZ_URL}.sha256}"
 LOCAL_PYZ="${ORCASTRA_INSTALLER_PYZ:-}"   # skip download, use this local zipapp
 
