@@ -10,14 +10,14 @@ issuance works. Login keeps working while Vault is sealed; only identity issuanc
 certificate features are unavailable.
 
 ```bash
-docker compose -f docker-compose.mini.yml exec vault \
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault \
   vault operator unseal <unseal-key>
 # repeat with two more distinct keys
 ```
 
 !!! tip "Confirm state"
-    `docker compose -f docker-compose.mini.yml exec vault vault status` should show
-    `Sealed: false`.
+    `docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault status` should show
+    `Sealed: false`. (Vault runs over HTTP internally, so the CLI needs `VAULT_ADDR=http://...`.)
 
 ## Managing identities
 
