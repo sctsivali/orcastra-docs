@@ -139,8 +139,9 @@ nav:
       - Quick Start: getting-started/quick-start.md
   - Orcastra Mini:
       - mini/index.md
+      - Automated Install: mini/automated-install.md
       - Architecture: mini/architecture.md
-      - Quick Start: mini/quick-start.md
+      - Quick Start (manual): mini/quick-start.md
       - Certificate Authentication: mini/certificate-auth.md
       - Configuration: mini/configuration.md
       - Operations & Troubleshooting: mini/operations.md

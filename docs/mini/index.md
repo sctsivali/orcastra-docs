@@ -20,6 +20,15 @@ setting, `AUTH_MODE=client-cert`.
 
 <div class="grid cards" markdown>
 
+-   :material-flash:{ .lg .middle } **Automated Install**
+
+    ---
+
+    One command runs the whole deployment: checks, secrets, certificates, Vault, and the first
+    admin.
+
+    [:octicons-arrow-right-24: Automated Install](automated-install.md)
+
 -   :material-sitemap:{ .lg .middle } **Architecture**
 
     ---
