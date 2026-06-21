@@ -347,15 +347,44 @@ AUDIT_DB_ENABLED=true
 
 ## 4. Provide the nginx TLS server certificate
 
-A self-signed certificate is fine for a single host.
+This is the server (site) certificate nginx presents over HTTPS. It is separate from the
+client certificates operators sign in with. A self-signed certificate is fine for a single
+host.
 
-```bash
-openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
-  -keyout config/nginx/certs/server.key \
-  -out config/nginx/certs/server.crt \
-  -subj "/CN=your-host.example.com" \
-  -addext "subjectAltName=DNS:your-host.example.com,IP:<host-ip>"
-```
+Set the Common Name (`-subj "/CN=..."`) and the Subject Alternative Name (SAN) to the exact
+host or IP you open in the browser. Browsers match the SAN (not the CN), and it must agree
+with the `.env` URLs (`NEXTAUTH_URL` / `NEXT_PUBLIC_API_URL` / `CORS_ORIGINS`). Use `DNS:` for
+a hostname and `IP:` for an address.
+
+=== "Hostname"
+
+    ```bash
+    openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+      -keyout config/nginx/certs/server.key \
+      -out config/nginx/certs/server.crt \
+      -subj "/CN=your-host.example.com" \
+      -addext "subjectAltName=DNS:your-host.example.com"
+    ```
+
+    `.env` URLs use `https://your-host.example.com:6969`.
+
+=== "Private IP only"
+
+    ```bash
+    openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+      -keyout config/nginx/certs/server.key \
+      -out config/nginx/certs/server.crt \
+      -subj "/CN=192.168.1.50" \
+      -addext "subjectAltName=IP:192.168.1.50"
+    ```
+
+    Replace `192.168.1.50` with your host's IP. Use the `IP:` form (not `DNS:`), and set the
+    three `.env` URLs to `https://192.168.1.50:6969`.
+
+!!! note "Self-signed certificate warning"
+    A self-signed certificate makes the browser show a "not secure" warning the first time.
+    Proceed past it, or import `server.crt` into the browser/OS trust store. Certificate
+    sign-in still works, because it does not depend on the server certificate being trusted.
 
 ## 5. Pull the images and start
 
@@ -424,6 +453,16 @@ curl -sk https://your-host.example.com:6969/api/v1/auth/cert-bootstrap \
   -d '{"bootstrap_token":"<BOOTSTRAP_ADMIN_TOKEN>"}'
 ```
 
+!!! note "Where these values come from"
+    `<BOOTSTRAP_ADMIN_TOKEN>` is the same value you set in `.env` in step 3. The commands write
+    `admin.crt`, `admin.key`, and `admin.p12` to the current directory; you import `admin.p12`
+    in step 8. If you ran these commands on a remote server, copy the bundle to the machine
+    with your browser first, for example:
+
+    ```bash
+    scp user@your-host.example.com:~/orcastra-mini/admin.p12 .
+    ```
+
 After it succeeds, close the window: blank `BOOTSTRAP_ADMIN_TOKEN` in `.env` and recreate the
 backend.
 
@@ -433,12 +472,14 @@ docker compose up -d backend
 
 ## 8. Sign in and issue the other identities
 
-1. Import `admin.p12` into your browser or OS keychain.
+1. Import the `admin.p12` from step 7 (the file you generated, copied to this machine if it was
+   created on the server) into your browser or OS keychain.
 2. Open `https://your-host.example.com:6969` and select the certificate when prompted.
 3. As admin, open **Administration -> Identities -> Issue Identity**. Choose a username, a role
-   (partner or tenant), and a validity period. A password-protected `.p12` downloads and the
-   one-time import password is shown once. Deliver both to the user out of band.
-4. The user imports the `.p12` and signs in the same way.
+   (partner or tenant), and a validity period. The Partner/Tenant `.p12` downloads through the
+   browser and its one-time import password is shown once. Deliver both to the user out of
+   band. (This UI download is separate from the `admin.p12` you generated yourself in step 7.)
+4. The user imports that `.p12` and signs in the same way.
 
 Revoke, re-activate, or change a role from the same screen. Changes take effect on the
 identity's next request. See [Certificate Authentication](certificate-auth.md) for the full
