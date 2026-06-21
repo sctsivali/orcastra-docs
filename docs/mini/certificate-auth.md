@@ -27,7 +27,8 @@ administrator's certificate usually is; certificates issued afterward come from 
 ## Enrolling the first admin
 
 The first admin is enrolled with a one-time bootstrap token. The flow is single-winner: once
-an active admin exists, the bootstrap endpoint is closed.
+an active admin exists, the bootstrap endpoint is closed. The `bootstrap_token` sent below is
+the same value the operator set as `BOOTSTRAP_ADMIN_TOKEN` in `.env`.
 
 ```bash
 curl -sk https://your-host.example.com:6969/api/v1/auth/cert-bootstrap \
