@@ -460,6 +460,11 @@ Certificate enrollment is trust-on-first-use. Generate a client certificate, the
 one-time bootstrap token for the admin role. The first certificate to bootstrap becomes admin,
 after which the window closes.
 
+!!! tip "Run this on the machine with your browser"
+    The certificate is self-signed and trusted by fingerprint, so generate it on your own
+    computer (where the browser is) and run the `curl` from there, pointed at the URL you use
+    to reach the dashboard. Then nothing has to be copied off the server.
+
 ```bash
 # Self-signed client cert (the app trusts by fingerprint, not by CA)
 openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
@@ -473,14 +478,29 @@ curl -sk https://your-host.example.com:6969/api/v1/auth/cert-bootstrap \
   -d '{"bootstrap_token":"<BOOTSTRAP_ADMIN_TOKEN>"}'
 ```
 
-!!! note "Where these values come from"
-    `<BOOTSTRAP_ADMIN_TOKEN>` is the same value you set in `.env` in step 3. The commands write
-    `admin.crt`, `admin.key`, and `admin.p12` to the current directory; you import `admin.p12`
-    in step 8. If you ran these commands on a remote server, copy the bundle to the machine
-    with your browser first, for example:
+`<BOOTSTRAP_ADMIN_TOKEN>` is the same value you set in `.env` in step 3. The commands write
+`admin.crt`, `admin.key`, and `admin.p12` to the current directory; you import `admin.p12` in
+step 8.
+
+!!! note "Server has no public IP"
+    Forward the dashboard port over the SSH session you already use, then treat
+    `https://localhost:6969` as the dashboard:
 
     ```bash
-    scp user@your-host.example.com:~/orcastra-mini/admin.p12 .
+    ssh -L 6969:127.0.0.1:6969 user@your-server
+    ```
+
+    Use `https://localhost:6969` in the `curl` above and in the browser, and set the three
+    `.env` URLs to `https://localhost:6969` (then `docker compose up -d`). If your computer can
+    already reach a private or VPN IP of the server, use that IP instead and skip the tunnel.
+
+!!! note "Already created admin.p12 on the server?"
+    Copy it to your computer with `scp`, or paste it through your existing SSH terminal with
+    base64:
+
+    ```bash
+    base64 -w0 admin.p12; echo                          # on the server, copy the output
+    echo 'PASTE_THE_BASE64' | base64 -d > admin.p12     # on your computer
     ```
 
 After it succeeds, close the window: blank `BOOTSTRAP_ADMIN_TOKEN` in `.env` and recreate the
