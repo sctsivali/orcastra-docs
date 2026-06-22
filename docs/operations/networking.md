@@ -37,9 +37,6 @@ Each VM instance requires the following LXD security settings:
 !!! warning
     These settings must be configured **before** installing Docker. Docker requires `nesting` to run containers inside LXD containers.
 
-!!! note "Container nesting vs hardware nested virtualization"
-    The `Nesting (Containers only)` setting above is an LXD **container** option that lets Docker run inside the container. It is not the same as **hardware nested virtualization** (CPU VT-x/AMD-V), which is only needed when the host is itself a VM or runs VM-type instances. See [Host Virtualization](../getting-started/prerequisites.md#host-virtualization-nested-virtualization).
-
 ---
 
 ## Docker Network Routing (VM 4)
