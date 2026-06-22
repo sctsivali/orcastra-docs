@@ -6,7 +6,7 @@ All VMs run inside LXD containers with private IP addresses. To make services ac
 
 ### Setup Procedure
 
-1. In the LXD UI, go to **Networking** → **Networks** → select your network (e.g., `lxdbr0`)
+1. In the LXD UI, go to **Networking** → **Networks** → select your network (for example, `lxdbr0`)
 2. Click **Forwards** → **Create Forward**
 3. **Listen Address:** the LXD host's public/reachable IP
 4. Click **Add Port** and forward each VM's ports as listed below
@@ -36,6 +36,9 @@ Each VM instance requires the following LXD security settings:
 
 !!! warning
     These settings must be configured **before** installing Docker. Docker requires `nesting` to run containers inside LXD containers.
+
+!!! note "Container nesting vs hardware nested virtualization"
+    The `Nesting (Containers only)` setting above is an LXD **container** option that lets Docker run inside the container. It is not the same as **hardware nested virtualization** (CPU VT-x/AMD-V), which is only needed when the host is itself a VM or runs VM-type instances. See [Host Virtualization](../getting-started/prerequisites.md#host-virtualization-nested-virtualization).
 
 ---
 

@@ -1,7 +1,7 @@
 # Domain Setup - Cloudflare Tunnel
 
 !!! info "Optional"
-    This step is optional. You can access the dashboard directly via IP:port. This guide enables custom domain access (e.g., `app.orcastra.io`) with automatic HTTPS via Cloudflare Tunnel.
+    This step is optional. You can access the dashboard directly via IP:port. This guide enables custom domain access (for example, `app.orcastra.io`) with automatic HTTPS via Cloudflare Tunnel.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Cloudflare Tunnel creates a secure outbound connection from your server to Cloud
 
 ## Prerequisites
 
-- Domain (e.g., `orcastra.io`) with DNS managed by Cloudflare
+- Domain (for example, `orcastra.io`) with DNS managed by Cloudflare
 - Cloudflare Zero Trust account (free tier is sufficient)
 
 ---
@@ -24,7 +24,7 @@ Cloudflare Tunnel creates a secure outbound connection from your server to Cloud
 ## Step 1: Create Tunnel in Cloudflare Dashboard
 
 1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com) → **Networks** → **Tunnels**
-2. Click **Create a tunnel** → select **Cloudflared** → name it (e.g., `orcastra-production`)
+2. Click **Create a tunnel** → select **Cloudflared** → name it (for example, `orcastra-production`)
 3. Copy the **install token** - you'll need it in the next step
 
 ---
