@@ -29,6 +29,14 @@ Follow the [common Docker installation](index.md#common-docker-installation) ste
 
 ## Step 2: Generate Passwords
 
+Work from a dedicated deployment directory so the compose file, `.env`, and Docker named volumes stay together in one predictable place. This keeps upgrades and troubleshooting straightforward instead of hunting for files scattered across the home or `/root` directory:
+
+```bash
+mkdir -p ~/orcastra && cd ~/orcastra
+```
+
+Run the remaining steps from `~/orcastra`. Then generate the OpenSearch passwords:
+
 ```bash
 OPENSEARCH_PASS="$(openssl rand -base64 24)"
 echo "OpenSearch admin password: $OPENSEARCH_PASS"

@@ -26,7 +26,10 @@ systemctl restart docker
 
 ## Step 2: Create Configuration Directories
 
+Create a dedicated deployment directory and work from it, then create the configuration subdirectories inside it. Keeping the compose file, `.env`, and config together in one place makes upgrades and troubleshooting predictable. Docker Compose also derives the project name from this directory, which is why later steps refer to the `orcastra_orcastra-dashboard` network.
+
 ```bash
+mkdir -p ~/orcastra && cd ~/orcastra
 mkdir -p config/fluent-bit
 mkdir -p config/opensearch-dashboards
 ```
@@ -637,10 +640,12 @@ echo "Network: $NET  |  Docker subnet: $DOCKER_BRIDGE"
 
 !!! note "The network name is project-prefixed"
     The `networks: orcastra-dashboard:` block in compose has no explicit `name:`, so the
-    real network is `<compose-project>_orcastra-dashboard` - and the project name defaults
-    to the directory you run compose from (e.g. `orcastra_orcastra-dashboard` when deploying
-    from `~/orcastra`). That is why a hard-coded `root_orcastra-dashboard` returns nothing.
-    The network also only exists **after** a successful
+    real network is `<compose-project>_orcastra-dashboard`, and the project name defaults
+    to the directory you run compose from. Following
+    [Step 2](#step-2-create-configuration-directories) you deploy from `~/orcastra`, so the
+    network is `orcastra_orcastra-dashboard`. Running from `/root` instead would give
+    `root_orcastra-dashboard`, which is why the lookup above auto-detects the name rather than
+    hard-coding it. The network also only exists **after** a successful
     `docker compose -f docker-compose.prod.yml up -d`, so an empty `$DOCKER_BRIDGE` usually
     means the stack is not up yet.
 

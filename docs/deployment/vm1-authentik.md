@@ -14,6 +14,17 @@ Follow the [common Docker installation](index.md#common-docker-installation) ste
 
 ## Step 2: Deploy Authentik
 
+### Create the Deployment Directory
+
+Run all deployment commands from a dedicated directory. This keeps the compose file, `.env`, and Docker named volumes in one predictable place instead of scattering them across the home or `/root` directory, which makes later troubleshooting and upgrades far easier.
+
+```bash
+mkdir -p ~/orcastra && cd ~/orcastra
+```
+
+!!! note "Run every command below from `~/orcastra`"
+    The remaining steps assume this is your working directory. Docker Compose also uses the directory name as the project name, so staying consistent keeps volume and network names predictable.
+
 ### Download Compose File
 
 ```bash
@@ -204,7 +215,7 @@ After completing VM 1 setup, you should have the following values saved:
 
 If using LXD port forwarding to access services from outside the LXD network:
 
-1. Navigate to **Networking** → **Networks** → select your network (e.g., `lxdbr0`)
+1. Navigate to **Networking** → **Networks** → select your network (for example, `lxdbr0`)
 2. Click **Forwards** → **Create Forward**
 3. Set **Listen Address** to the LXD host's public/reachable IP
 4. Add ports:
