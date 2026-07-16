@@ -12,6 +12,14 @@ This section covers post-deployment operations: domain configuration, networking
 
     [:octicons-arrow-right-24: ORCA Agent Installer](orca-agent-install.md)
 
+-   :material-shield-account:{ .lg .middle } **OrcaHub Federation (Partner SSO)**
+
+    ---
+
+    Let tenants sign in to your dashboard with their OrcaHub identity
+
+    [:octicons-arrow-right-24: OrcaHub Federation](orcahub-federation-sso.md)
+
 -   :material-web:{ .lg .middle } **Domain Setup**
 
     ---
