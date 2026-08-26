@@ -84,6 +84,50 @@ The frontend can reach Authentik (login works) but cannot reach the backend API.
 
 ---
 
+### Clusters Report as Offline While the Hosts Are Healthy
+
+If every cluster turns offline at once, and the hypervisors themselves are fine, suspect the
+backend container's own temporary storage before the fleet. The backend writes each cluster's TLS
+client certificate to `/tmp`, which is a 256 MiB tmpfs, and a failure to write it used to be
+reported as the cluster being unreachable.
+
+1. Read the backend health endpoint. It reports the tmpfs directly:
+   ```bash
+   curl -s http://localhost:8765/health | jq .temp_storage
+   ```
+   ```json
+   {
+     "path": "/tmp",
+     "available": true,
+     "used_mib": 0.3,
+     "total_mib": 256.0,
+     "percent_used": 0.1,
+     "degraded": false
+   }
+   ```
+2. `degraded` turns true at 80 percent. The endpoint still answers HTTP 200 when degraded, on
+   purpose: the container healthcheck keys on the status code, and reporting unhealthy would
+   restart-loop the backend. A restart would even appear to fix it, because it clears the tmpfs.
+3. When the tmpfs is full, cluster endpoints answer HTTP 503 with
+   `"code": "BACKEND_TEMP_STORAGE_FULL"` and a message naming the free space. That is a backend
+   fault, not a cluster fault, so no certificate needs rotating and no host needs restarting.
+4. Free the space and the backend recovers on its own, with no restart:
+   ```bash
+   docker exec orcastra-dashboard-backend sh -c 'df -h /tmp; ls /tmp/orcastra-lxd-certs/*/ | wc -l'
+   ```
+   Certificate files are bounded at roughly two per cluster per worker process. A count that
+   climbs steadily instead of settling means an older build without that bound.
+5. `BACKEND_TMPFS_SIZE` in `.env` sizes the tmpfs if a large fleet genuinely needs more than the
+   256 MiB default.
+
+Log line to search for when this happens:
+
+```
+Cannot prepare TLS credentials for <cluster>: backend storage
+```
+
+---
+
 ## Database Issues
 
 ### Tables Not Created
