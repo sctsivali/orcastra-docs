@@ -75,6 +75,29 @@ This is the primary verification - it tests Authentik, the frontend, and the bac
 curl -s http://<VM4_IP>:8765/health | python3 -m json.tool
 ```
 
+Expected output:
+
+```json
+{
+    "status": "healthy",
+    "service": "orcastra-dashboard-api",
+    "temp_storage": {
+        "path": "/tmp",
+        "available": true,
+        "used_mib": 0.3,
+        "total_mib": 256.0,
+        "percent_used": 0.1,
+        "degraded": false
+    }
+}
+```
+
+`temp_storage` describes the tmpfs the backend writes cluster TLS certificates to. `degraded`
+turns true at 80 percent and is worth alerting on: once that filesystem is full the backend
+cannot prepare credentials for any cluster, and although it now says so plainly with HTTP 503
+and `BACKEND_TEMP_STORAGE_FULL`, catching it before it fills is cheaper. The endpoint answers
+200 whether or not it is degraded, because the container healthcheck keys on the status code.
+
 ### Container Status
 
 ```bash
