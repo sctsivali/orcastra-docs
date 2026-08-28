@@ -4,6 +4,14 @@ This section covers post-deployment operations: domain configuration, networking
 
 <div class="grid cards" markdown>
 
+-   :material-update:{ .lg .middle } **Upgrading a Deployment**
+
+    ---
+
+    Preflight, deploy and roll back a pinned release on an existing VM
+
+    [:octicons-arrow-right-24: Upgrading](upgrading.md)
+
 -   :material-robot:{ .lg .middle } **ORCA Agent Installer**
 
     ---

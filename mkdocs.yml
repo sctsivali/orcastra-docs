@@ -153,6 +153,7 @@ nav:
       - VM 4 - Orcastra Dashboard: deployment/vm4-dashboard.md
   - Operations:
       - operations/index.md
+      - Upgrading a Deployment: operations/upgrading.md
       - ORCA Agent Installer: operations/orca-agent-install.md
       - OrcaHub Federation (Partner SSO): operations/orcahub-federation-sso.md
       - Domain Setup (Cloudflare): operations/domain-setup.md
