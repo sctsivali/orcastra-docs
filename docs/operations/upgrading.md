@@ -136,6 +136,7 @@ load. A healthy container is not a working dashboard.
 | `temp_storage.percent_used` | `GET /health` | Graph it. At 100 percent the backend cannot write LXD credentials and answers `503 BACKEND_TEMP_STORAGE_FULL`. |
 | HTTP 503 on cluster routes | access logs | An unreachable cluster now answers 503 where it used to answer 500, 404 or 400 depending on the endpoint. Any alert keyed on 500 will stop firing for real cluster outages, and any alert keyed on 5xx will fire more. Update both. |
 | `BACKEND_TEMP_STORAGE_FULL` | response `code` | Says the fault is your backend's own disk, not a hypervisor. The two used to be indistinguishable, which once reported an entire healthy fleet as offline. |
+| HTTP 429 on ordinary console use | access logs | `RATE_LIMIT_REQUESTS` is keyed on client IP and counted in memory, so it is per worker process. A browser holds one keep-alive connection and therefore sees the configured number unmultiplied, whatever `WEB_CONCURRENCY` says. One operator driving the console was measured at roughly 286 requests a minute. If your `.env` came from a template published before v1.0.0-RC4 it carries 100, which throttles a single ordinary user; the code default is 500. Behind NAT, every operator shares one bucket. |
 | autoheal restarts | `docker logs orcastra-dashboard-autoheal` | A restart here means a container was passing its process check while failing its healthcheck. Investigate it, do not just note it. |
 
 ## Rolling back
