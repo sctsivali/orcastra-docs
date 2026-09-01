@@ -147,6 +147,8 @@ nav:
       - Operations & Troubleshooting: mini/operations.md
   - Deployment:
       - deployment/index.md
+      - Lab (Docker, satu komputer): deployment/lab-single-host.md
+      - Status produksi Jakarta: deployment/production-jakarta.md
       - VM 1 - Authentik (SSO): deployment/vm1-authentik.md
       - VM 2 - Vault (Secrets): deployment/vm2-vault.md
       - VM 3 - OpenSearch (Logging): deployment/vm3-opensearch.md

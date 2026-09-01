@@ -2,6 +2,12 @@
 
 This section provides step-by-step instructions for deploying each Orcastra platform component across four virtual machines.
 
+!!! note "Lab (one computer) and current production — Bahasa Indonesia"
+    The four-VM guides below are the split install. Two extra pages (Indonesian, nubi-jelas) document other realities as of **1 Sep 2026**:
+
+    - **[Lab (Docker, satu komputer)](lab-single-host.md)** — full platform (Dashboard + Authentik + Vault + OpenSearch) on **one** Docker host. This is **not** [Orcastra Mini](../mini/index.md) (Mini = TLS client-cert, no Authentik/OpenSearch) and **not** the 4-VM layout.
+    - **[Status produksi Jakarta](production-jakarta.md)** — live production after the Germany → Jakarta lift-and-shift (dashboard VM `10.1.1.50`, SSO on a dedicated host).
+
 ## Deployment Order
 
 !!! warning "Sequential Deployment Required"
