@@ -3,11 +3,3 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
-
-# Lab secrets — never commit
-CREDENTIALS.txt
-.vault-init.json
-.vault-orcastra-token.json
-.vault-runtime.json
-.authentik-oidc.json
-.secrets.json
