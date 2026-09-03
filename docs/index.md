@@ -57,7 +57,7 @@ hide:
 
 ## Platform Overview
 
-Orcastra CMP is a full-stack platform that manage infrastructure across multiple clusters with:
+Orcastra CMP is a full-stack platform that manages infrastructure across multiple clusters with:
 
 - **Single Sign-On (SSO)** via Authentik with role-based access control (RBAC)
 - **Secret Management & PKI** via HashiCorp Vault
