@@ -10,7 +10,7 @@ graph TB
         U[User]
     end
 
-    subgraph "VM 4 - Orcastra Dashboard"
+    subgraph "VM 4 - Orcastra CMP"
         FE[Frontend<br/>Next.js :4321]
         BE[Backend<br/>FastAPI :8765]
         PG[(PostgreSQL)]
@@ -137,26 +137,23 @@ graph LR
 
 ## Network Topology
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      LXD Host Server                        │
-│                                                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │  VM 1    │  │  VM 2    │  │  VM 3    │  │  VM 4    │   │
-│  │ Authentik│  │  Vault   │  │OpenSearch│  │Dashboard │   │
-│  │  :9000   │  │  :8200   │  │:9200/:5601│ │:4321/:8765│  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
-│       │              │              │              │         │
-│       └──────────────┴──────────────┴──────────────┘         │
-│                    LXD Bridge Network                        │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                    Port Forwarding
-                           │
-                    ┌──────┴──────┐
-                    │   Internet  │
-                    │  / Browser  │
-                    └─────────────┘
+```mermaid
+graph TB
+    subgraph "LXD Host Server"
+        VM1[VM 1<br/>Authentik<br/>:9000]
+        VM2[VM 2<br/>Vault<br/>:8200]
+        VM3[VM 3<br/>OpenSearch<br/>:9200, :5601]
+        VM4[VM 4<br/>Orcastra CMP<br/>:4321, :8765]
+        BR[LXD Bridge Network]
+    end
+
+    NET[Internet<br/>Browser]
+
+    VM1 --- BR
+    VM2 --- BR
+    VM3 --- BR
+    VM4 --- BR
+    BR ---|Port forwarding| NET
 ```
 
 ## RBAC Model
