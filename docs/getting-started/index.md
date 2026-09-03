@@ -18,7 +18,7 @@ The platform is deployed across four virtual machines in an on-premises environm
 
 ```mermaid
 graph LR
-    A[VM 1<br/>Authentik<br/>SSO] --> D[VM 4<br/>Orcastra<br/>Dashboard]
+    A[VM 1<br/>Authentik<br/>SSO] --> D[VM 4<br/>Orcastra<br/>CMP]
     B[VM 2<br/>Vault<br/>Secrets] --> D
     C[VM 3<br/>OpenSearch<br/>Logging] --> D
     B -->|Audit Logs| C

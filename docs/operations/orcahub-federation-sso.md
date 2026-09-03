@@ -13,7 +13,7 @@ Federation closes that gap. You configure your Authentik to trust OrcaHub's iden
 ```mermaid
 sequenceDiagram
     participant T as Tenant (buyer)
-    participant D as Your Orcastra Dashboard
+    participant D as Your Orcastra CMP
     participant PA as Your Authentik
     participant OA as OrcaHub IdP (sso.orcastra.io)
     T->>D: Open dashboard, sign in
