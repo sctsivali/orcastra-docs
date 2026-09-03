@@ -60,7 +60,7 @@ This is the primary verification - it tests Authentik, the frontend, and the bac
 2. You should see the Orcastra login page
 3. Click **Sign in** → you'll be redirected to Authentik
 4. Login with your `akadmin` account (or any Authentik user)
-5. After login, you should see the Orcastra Dashboard homepage
+5. After login, you should see the Orcastra CMP homepage
 
 !!! success "If all steps pass"
     The system is fully operational. Authentication, API calls, and the frontend are all working correctly.

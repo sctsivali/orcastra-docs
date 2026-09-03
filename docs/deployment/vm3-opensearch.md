@@ -533,7 +533,7 @@ Create the dashboard import script and the ndjson template files. The script cre
 - **Vault Security Audit**, vault operations and secret access patterns
 
 !!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-dashboard repository](https://github.com/sctsivali/orcastra-dashboard) under `config/opensearch-dashboards/`, or copy them from your deployment package.
+    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-cmp repository](https://github.com/sctsivali/orcastra-cmp) under `config/opensearch-dashboards/`, or copy them from your deployment package.
 
 Place the following files in `config/opensearch-dashboards/`:
 
@@ -1016,4 +1016,4 @@ After completing VM 3 setup, you should have the following values saved:
 
 ---
 
-**Next:** [VM 4 - Orcastra Dashboard](vm4-dashboard.md)
+**Next:** [VM 4 - Orcastra CMP](vm4-dashboard.md)

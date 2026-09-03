@@ -87,7 +87,7 @@ graph TB
 | `opensearch-node1` | `opensearchproject/opensearch:3.5.0` | 9200 | Search & analytics engine |
 | `opensearch-dashboards` | `opensearchproject/opensearch-dashboards:3.5.0` | 5601 | Visualization UI |
 
-### VM 4 - Orcastra Dashboard
+### VM 4 - Orcastra CMP
 
 | Container | Image | Port | Purpose |
 |---|---|---|---|

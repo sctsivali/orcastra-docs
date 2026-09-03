@@ -5,11 +5,12 @@
 # Repository: https://github.com/sctsivali/orcastra-docs
 # =============================================================================
 
-site_name: Orcastra Documentation
+site_name: Orcastra CMP Documentation
 site_url: https://orcastra.readthedocs.io/
 site_description: >-
-  Operations center for multi-cluster management,
-  secret management, public key infrastructure, role-based access control, and centralized logging.
+  Open Reliable Cloud Access and Orchestration. Orcastra CMP manages multi-cluster
+  infrastructure with secret management, public key infrastructure, role-based access
+  control, and centralized logging.
 site_author: Orcastra Dev Team
 copyright: Copyright &copy; 2026 Orcastra
 
@@ -150,7 +151,7 @@ nav:
       - VM 1 - Authentik (SSO): deployment/vm1-authentik.md
       - VM 2 - Vault (Secrets): deployment/vm2-vault.md
       - VM 3 - OpenSearch (Logging): deployment/vm3-opensearch.md
-      - VM 4 - Orcastra Dashboard: deployment/vm4-dashboard.md
+      - VM 4 - Orcastra CMP: deployment/vm4-dashboard.md
   - Operations:
       - operations/index.md
       - Upgrading a Deployment: operations/upgrading.md

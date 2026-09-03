@@ -124,6 +124,16 @@ docker compose up -d
     | Provider | `Orcastra Dashboard Provider` |
     | Launch URL | `http://<VM4_IP>:4321` |
 
+    !!! warning "Type the Slug exactly, and do not modernise it"
+        The product is called Orcastra CMP, but these Authentik object names stay on the
+        earlier wording so that a new install matches every deployment already in the field.
+        The Slug matters far more than the Name: Authentik builds the OIDC issuer from it, so
+        `orcastra-dashboard` becomes
+        `https://<authentik>/application/o/orcastra-dashboard/`, and VM 4 sets that exact
+        string as `AUTHENTIK_ISSUER`. Authentik also fills the Slug in for you from the Name,
+        so check it after typing. A Slug that does not match the issuer fails token
+        validation for every user, on every request.
+
 4. Click **Create**
 
 ---

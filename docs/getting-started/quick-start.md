@@ -40,7 +40,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 - [ ] Create Orcastra access and audit index templates
 - [ ] **Save:** Admin Password, Dashboards Password, Fluent Bit Password
 
-### VM 4 - Orcastra Dashboard
+### VM 4 - Orcastra CMP
 
 - [ ] Install Docker
 - [ ] Create configuration files (Fluent Bit, Docker Compose)

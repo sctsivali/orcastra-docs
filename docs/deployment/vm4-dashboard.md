@@ -1,8 +1,8 @@
-# VM 4 - Orcastra Dashboard
+# VM 4 - Orcastra CMP
 
 **Specifications:** 4 vCPU, 8 GB RAM, 60 GB Storage
 
-The Orcastra Dashboard is the main web application consisting of a Next.js frontend, FastAPI backend, PostgreSQL database, Redis cache, and a Fluent Bit log collector sidecar.
+Orcastra CMP is the main web application consisting of a Next.js frontend, FastAPI backend, PostgreSQL database, Redis cache, and a Fluent Bit log collector sidecar.
 
 ---
 
@@ -45,7 +45,7 @@ file newer than your images can reference variables those images ignore.
 ```bash
 RELEASE=v1.0.0-RC4
 curl -fsSL -o docker-compose.prod.yml \
-  "https://raw.githubusercontent.com/sctsivali/orcastra-dashboard/${RELEASE}/docker-compose.prod.yml"
+  "https://raw.githubusercontent.com/sctsivali/orcastra-cmp/${RELEASE}/docker-compose.prod.yml"
 ```
 
 Confirm you got the whole file rather than a 404 page:
@@ -80,7 +80,7 @@ lose data rather than features.
 ??? note "Reference copy of docker-compose.prod.yml (click to expand)"
 
     # =============================================================================
-    # Orcastra Dashboard - Production Docker Compose
+    # Orcastra CMP - Production Docker Compose
     # =============================================================================
     # USE THIS for on-prem deployment (pulls pre-built images from Docker Hub)
     # DO NOT use docker-compose.yml (that's for development/building from source)
@@ -343,7 +343,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
 ??? note "Full fluent-bit.conf (click to expand)"
 
     ```ini
-    # Fluent Bit Configuration for Orcastra Dashboard
+    # Fluent Bit Configuration for Orcastra CMP
     # Separates: Access Logs (90d) | Audit Logs (3yr) | App Logs (30d)
 
     [SERVICE]
@@ -923,7 +923,7 @@ No value found at secret/metadata/integrations/api_keys
 
 ## Output Summary
 
-After completing VM 4, the Orcastra Dashboard should be accessible at:
+After completing VM 4, Orcastra CMP should be accessible at:
 
 | Service | URL |
 |---|---|
