@@ -1,8 +1,8 @@
 # OrcaHub Federation (Partner SSO)
 
-**Let your tenants sign in to your Orcastra dashboard with their existing OrcaHub identity, without issuing them a separate password.**
+**Let your tenants sign in to your Orcastra CMP with their existing OrcaHub identity, without issuing them a separate password.**
 
-When you sell compute through the OrcaHub marketplace, a buyer purchases on OrcaHub and then opens your Orcastra dashboard to operate their instances. Your dashboard already knows what that buyer may access: OrcaHub pushes their project entitlement to your dashboard at purchase time, keyed by email. What is missing is authentication, because your identity provider has never seen that user. Their account lives in OrcaHub's identity provider, not yours.
+When you sell compute through the OrcaHub marketplace, a buyer purchases on OrcaHub and then opens your Orcastra CMP to operate their instances. Your dashboard already knows what that buyer may access: OrcaHub pushes their project entitlement to your dashboard at purchase time, keyed by email. What is missing is authentication, because your identity provider has never seen that user. Their account lives in OrcaHub's identity provider, not yours.
 
 Federation closes that gap. You configure your Authentik to trust OrcaHub's identity provider as an upstream OIDC source. The buyer clicks **Sign in with OrcaHub**, authenticates once against OrcaHub, and lands in your dashboard scoped to exactly their own projects. This is a one-time setup per partner.
 

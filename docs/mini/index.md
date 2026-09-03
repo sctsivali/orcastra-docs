@@ -1,12 +1,12 @@
 # Orcastra Mini
 
-**Single-host build of the Orcastra Dashboard. The control plane and HashiCorp Vault run on
+**Single-host build of Orcastra CMP. The control plane and HashiCorp Vault run on
 one machine, and operators sign in with TLS client certificates instead of an external
 identity provider.**
 
 ---
 
-Orcastra Mini is the same product as the full Orcastra Dashboard, packaged for sites that
+Orcastra Mini is the same product as full Orcastra CMP, packaged for sites that
 cannot run a four-VM topology. It keeps the 3-tier RBAC, instance lifecycle, console and
 terminal, and monitoring, but removes the two heaviest dependencies:
 

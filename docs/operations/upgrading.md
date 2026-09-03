@@ -1,7 +1,7 @@
 # Upgrading a Deployment
 
 Moving an existing VM 4 deployment from one pinned release to the next. For a first
-install, follow [VM 4 - Orcastra Dashboard](../deployment/vm4-dashboard.md) instead.
+install, follow [VM 4 - Orcastra CMP](../deployment/vm4-dashboard.md) instead.
 
 Everything on this page is the procedure, which does not change between releases. Anything
 specific to a version lives in the [release notes](#release-notes) table at the bottom, one
@@ -29,7 +29,7 @@ the one you are running:
 
 ```bash
 curl -fsSL -o docker-compose.prod.yml.new \
-  "https://raw.githubusercontent.com/sctsivali/orcastra-dashboard/${RELEASE}/docker-compose.prod.yml"
+  "https://raw.githubusercontent.com/sctsivali/orcastra-cmp/${RELEASE}/docker-compose.prod.yml"
 ```
 
 Then run whatever preflight tooling your team keeps on the deployment VM against it. Operator

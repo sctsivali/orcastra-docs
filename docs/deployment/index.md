@@ -22,7 +22,7 @@ graph LR
 | [VM 1 - Authentik](vm1-authentik.md) | Authentik SSO | Identity provider, OAuth2/OIDC, role groups |
 | [VM 2 - Vault](vm2-vault.md) | HashiCorp Vault | Secret engine, PKI CA, audit logging |
 | [VM 3 - OpenSearch](vm3-opensearch.md) | OpenSearch | Log aggregation, dashboards, index templates |
-| [VM 4 - Dashboard](vm4-dashboard.md) | Orcastra Dashboard | Web application, API, Fluent Bit sidecar |
+| [VM 4 - Dashboard](vm4-dashboard.md) | Orcastra CMP | Web application, API, Fluent Bit sidecar |
 
 ## Common: Docker Installation
 

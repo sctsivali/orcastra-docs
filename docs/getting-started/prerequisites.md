@@ -13,7 +13,7 @@ You need four VMs with the following minimum specifications:
 | VM 1 | Authentik (SSO) | 2 | 4 GB | 40 GB | Ubuntu 22.04+ |
 | VM 2 | Vault (Secrets) | 2 | 2 GB | 20 GB | Ubuntu 22.04+ |
 | VM 3 | OpenSearch (Logging) | 4 | 16 GB | 100 GB | Ubuntu 22.04+ |
-| VM 4 | Orcastra Dashboard | 4 | 8 GB | 60 GB | Ubuntu 22.04+ |
+| VM 4 | Orcastra CMP | 4 | 8 GB | 60 GB | Ubuntu 22.04+ |
 
 ### LXD Configuration
 

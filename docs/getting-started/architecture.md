@@ -76,7 +76,7 @@ graph TB
     - Index lifecycle management with retention policies
 - **Technology:** OpenSearch (Docker), OpenSearch Dashboards (Docker)
 
-### VM 4 - Orcastra Dashboard (Application)
+### VM 4 - Orcastra CMP (Application)
 
 - **Role:** The main web application and API backend
 - **Key Functions:**
