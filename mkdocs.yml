@@ -161,6 +161,20 @@ nav:
       - Networking & Connectivity: operations/networking.md
       - Verification & Testing: operations/verification.md
       - Troubleshooting: operations/troubleshooting.md
+  - Extensions:
+      - extensions/index.md
+      - What An Add-on Is: extensions/overview.md
+      - Build Your First Add-on: extensions/build-your-first-add-on.md
+      - Installing An Add-on: extensions/installing.md
+      - Capabilities: extensions/capabilities.md
+      - Cluster And Project Scope: extensions/scope.md
+      - Settings: extensions/settings.md
+      - Webhooks: extensions/webhooks.md
+      - Rate Limits: extensions/rate-limits.md
+      - Error Responses: extensions/errors.md
+      - Versioning And Deprecation: extensions/versioning.md
+      - Security Model: extensions/security.md
+      - API Reference: extensions/api-reference.md
   - Architecture:
       - architecture/index.md
       - System Components: architecture/components.md
