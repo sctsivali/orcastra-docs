@@ -86,7 +86,9 @@ A working credential answers with what your installation currently holds:
 }
 ```
 
-A broken one answers `401` with a `detail` field. Poll this endpoint rather than caching what you were told at install: it is how you notice that an operator narrowed your reach, suspended you, or rotated your credential.
+Two different failures, and they mean different things. A credential that is wrong, expired or revoked answers `401`. Omitting either header entirely answers `422`, because the headers are declared as required, so a client that sends only the key id gets a validation error rather than an authentication one.
+
+Poll this endpoint rather than caching what you were told at install: it is how you notice that an operator narrowed your reach, suspended you, or rotated your credential.
 
 Now read something real:
 
