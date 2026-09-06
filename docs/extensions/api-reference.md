@@ -14,6 +14,19 @@ Browse it at `/api/v1/docs/public`. Feed it to your own generator to produce a c
 
 A copy generated from a current build is committed here as [`orcastra-extensions-v1.yaml`](orcastra-extensions-v1.yaml) for readers without a deployment to hand. The live document is authoritative.
 
+!!! note "What this document deliberately leaves out"
+    It describes the endpoints **your add-on's credential** may call, and nothing else. Publishing
+    an add-on, installing one, and managing its webhook subscriptions are done by a person signed
+    into the dashboard, authenticated by their session rather than by your credential, so those
+    endpoints are not here and a generated client will not contain them.
+
+    That is the boundary, not an omission: your add-on is never given the ability to publish or
+    install itself.
+
+    Those endpoints are documented in prose instead. Publishing and versioning are on
+    [the manifest reference](manifest.md), installing is on [installing an add-on](installing.md),
+    and subscriptions are on [webhooks](webhooks.md).
+
 ## Authenticating
 
 Both headers, together. Neither alone authenticates anything.

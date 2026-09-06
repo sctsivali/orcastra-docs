@@ -10,35 +10,77 @@ You need the partner role in an Orcastra deployment, an organization with at lea
 
 Publishing describes what your add-on is and what it asks for. It grants nothing on its own.
 
-```bash
-curl -sS -X POST "https://<YOUR_ORCASTRA_API>/api/v1/extensions" \
-  -H "Authorization: Bearer <YOUR_DASHBOARD_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "slug": "acme-backup",
-    "name": "Acme Backup",
-    "publisher": "Acme Ltd",
-    "version": "1.0.0",
-    "description": "Snapshots instances on a schedule",
-    "capabilities": ["inventory.read", "lxd.proxy"],
-    "scope": {"permission": "write", "clusters": "selected", "projects": "selected"},
-    "settings": [
-      {"key": "retention_days", "type": "integer", "label": "Retention", "min": 1, "max": 90, "default": 7},
-      {"key": "api_token", "type": "secret", "label": "Acme API token", "required": true}
-    ]
-  }'
+Open **Extensions** in the sidebar and choose **Publish Add-on**. Two ways in, and they produce
+the same thing:
+
+=== "Form"
+
+    Fill in the slug, name, publisher and version, tick the capabilities you need, and choose the
+    scope shape. Use this the first time, when you would rather not learn the field names.
+
+=== "Manifest file"
+
+    Paste your manifest, or choose a `.json` file. Use this once the manifest lives in version
+    control, which is where it belongs, and whenever it declares settings fields or webhook
+    defaults: the form does not build those.
+
+=== "API"
+
+    ```bash
+    curl -sS -X POST "https://<YOUR_ORCASTRA_API>/api/v1/extensions" \
+      -H "Authorization: Bearer <YOUR_DASHBOARD_TOKEN>" \
+      -H "Content-Type: application/json" \
+      -d @manifest.json
+    ```
+
+    `<YOUR_DASHBOARD_TOKEN>` is the bearer token your dashboard session already uses. Open the
+    browser's developer tools, make any request in the dashboard, and copy the `Authorization`
+    header. It is a session token, so it expires; the UI above needs no token at all, which is why
+    it is listed first.
+
+A complete manifest, with every field explained, is on [the manifest reference](manifest.md):
+
+```json
+{
+  "slug": "acme-backup",
+  "name": "Acme Backup",
+  "publisher": "Acme Ltd",
+  "version": "1.0.0",
+  "description": "Snapshots instances on a schedule",
+  "capabilities": ["inventory.read", "lxd.proxy"],
+  "scope": {"permission": "write", "clusters": "selected", "projects": "selected"},
+  "settings": [
+    {"key": "retention_days", "type": "integer", "label": "Retention", "min": 1, "max": 90, "default": 7},
+    {"key": "api_token", "type": "secret", "label": "Acme API token", "required": true}
+  ]
+}
 ```
 
 Ask for the narrowest set of capabilities that does the job. Every one of them appears on the consent screen, and an operator deciding whether to trust you reads that list.
 
+!!! warning "What you publish is a draft, and a draft is invisible"
+    A newly published add-on has status `draft`. Only you can see it. Nobody can install it, and
+    an operator opening **Extensions** will not be told it exists.
+
+    It appears under **Your Drafts** on that page with a **Publish** button next to it. Press that
+    and it becomes installable. Through the API the same step is
+    `PATCH /api/v1/extensions/{slug}` with `{"status": "published"}`.
+
+    This trips people up because nothing errors: you publish, the operator sees an empty
+    catalogue, and neither of you is told why.
+
 !!! warning "The manifest you publish is the manifest that is enforced"
-    The document is submitted, not fetched from a URL you host. Orcastra stores a hash of it, and an operator's consent is recorded against that hash. Changing what your add-on asks for means publishing a new version and having it approved again, which is deliberate: it is what stops a benign manifest becoming a broader one after somebody has read it.
+    The document is submitted, not fetched from a URL you host. Orcastra stores a hash of it, and an operator's consent is recorded against that hash. Changing what your add-on asks for means publishing a new version, covered in [versioning](versioning.md), which existing installations must approve before they move to it.
 
 ## 2. Have an operator install it
 
 Installing is done in the dashboard, under **Extensions**, or from **Settings** then **Extensions**. The operator chooses the organization, reads what is being granted, and confirms.
 
 The consent screen shows the clusters your add-on will actually reach, which is the intersection of what you asked for and what that operator holds. It can be shorter than you expect, and the screen says which clusters were refused and why. That is normal: your add-on is never given more access than the person installing it has.
+
+They will hand you back two secrets and an installation id. If they forget the id, your own
+credential can tell you: `GET /extensions/self` returns it as `installation_id`, and steps 5 and 6
+need it.
 
 ## 3. Save the credential
 
@@ -104,7 +146,7 @@ Deliveries go to an endpoint you register. It has to be reachable from the Orcas
 
 ```bash
 curl -sS -X POST \
-  "$ORCASTRA_API_URL/api/v1/extensions/installations/7/webhooks" \
+  "$ORCASTRA_API_URL/api/v1/extensions/installations/$INSTALLATION_ID/webhooks" \
   -H "Authorization: Bearer <YOUR_DASHBOARD_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -119,7 +161,7 @@ A new subscription is not live yet. It answers `pending_verification` until the 
 
 ```bash
 curl -sS -X POST \
-  "$ORCASTRA_API_URL/api/v1/extensions/installations/7/webhooks/1/verify" \
+  "$ORCASTRA_API_URL/api/v1/extensions/installations/$INSTALLATION_ID/webhooks/$SUBSCRIPTION_ID/verify" \
   -H "Authorization: Bearer <YOUR_DASHBOARD_TOKEN>"
 ```
 
