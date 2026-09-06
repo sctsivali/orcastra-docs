@@ -165,6 +165,7 @@ nav:
       - extensions/index.md
       - What An Add-on Is: extensions/overview.md
       - Build Your First Add-on: extensions/build-your-first-add-on.md
+      - Manifest Reference: extensions/manifest.md
       - Installing An Add-on: extensions/installing.md
       - Capabilities: extensions/capabilities.md
       - Cluster And Project Scope: extensions/scope.md

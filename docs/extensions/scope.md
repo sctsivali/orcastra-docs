@@ -27,7 +27,9 @@ That matters because the facts move. An organization can stop being bound to a c
 
 ## Permission levels
 
-`read`, `write` and `admin`, in that order. An installation cannot be granted a level above what its manifest declared it needs, so publishing `read` and later wanting `write` means publishing a new version.
+`read`, `write` and `admin`, in that order. An installation cannot be granted a level above what its manifest declared it needs, so publishing `read` and later wanting `write` means publishing a new version, which is
+[`POST /api/v1/extensions/{slug}/versions`](versioning.md#publishing-a-new-version-of-your-own-add-on).
+Existing installations stay on what they agreed to until their operator approves the new one.
 
 ## Projects
 
