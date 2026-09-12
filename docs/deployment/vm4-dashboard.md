@@ -178,7 +178,8 @@ lose data rather than features.
             condition: service_healthy
           postgres:
             condition: service_healthy
-        # Resource limits: ensures Dashboard Host shows container resources, not the host
+        # Resource limits. Settings > Dashboard Host reports these as the Backend Container
+        # figures, next to the machine's own under Host.
         # Measured, not guessed: four uvicorn workers sat at 587/524/461/446 MB under QA load,
         # 2018 MB against a 2g cap, and the kernel OOM-killed two of them. That failure is silent
         # (RestartCount stays 0, the healthcheck passes, no ERROR line is logged) and shows up
@@ -620,7 +621,9 @@ POSTGRES_PORT=5432
 DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastra_dashboard
 
 # === Backend (port: 8765) ===
-# Uvicorn workers, and the caps that keep them from being OOM-killed silently.
+# Uvicorn workers, and the caps that keep them from being OOM-killed silently. The three
+# values are what Settings > Dashboard Host shows under Backend Container (workers expected,
+# memory limit, CPU quota); the Host section above it is the machine itself.
 WEB_CONCURRENCY=4
 BACKEND_MEM_LIMIT=4g
 BACKEND_CPUS=2
@@ -722,13 +725,11 @@ OPENSEARCH_PASSWORD=<FLUENTBIT_PASSWORD_FROM_VM3>
 
 ## Step 7: Start the Dashboard
 
-### Authenticate with Docker Hub
+### Registry access
 
-```bash
-docker login
-```
-
-Follow the instructions to authenticate (copy the confirmation code and visit the activation URL).
+The release images under `svlct/orcastra-dashboard` are pulled anonymously; no `docker login`
+is needed. If the repository is ever made private, run `docker login` first (follow the
+device-code instructions) and `docker logout` after the pull.
 
 ### Pull and Start
 
