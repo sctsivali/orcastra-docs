@@ -74,6 +74,7 @@ lose data rather than features.
 | `mem_limit` and `cpus` on the backend | Four workers were measured at roughly 500 MB each under load. Against too small a cap the kernel OOM-kills them quietly: the restart count stays at 0 and the healthcheck keeps passing. |
 | `stop_grace_period: 30s` | Gives uvicorn's 20 second graceful shutdown room to drain. Docker's 10 second default severs live console and terminal sessions on every deploy. |
 | Backend healthcheck with `timeout=3` inside the probe | Without an internal timeout, a hung probe and a hung application look identical to Docker. |
+| Frontend healthcheck of `/healthz` with a client that never follows a redirect | The earlier copy probed `/` with wget, which followed the auth redirect to `NEXTAUTH_URL` through the public edge; any 502 there marked a healthy frontend unhealthy and the autoheal sidecar restarted it every minute or so, which took a deployment down until the loop was understood. `/healthz` answers from the process alone, and a 3xx is now a failure the container reports rather than a hop the probe hides. |
 | `WEB_CONCURRENCY` and the `ORCASTRA_*` levers | Incident tuning without a rebuild. |
 | Six `MAP_TILE_*` variables in the frontend service | The frontend service has no `env_file`, so these reach it only through this block. Setting them in `.env` against an older compose file does nothing at all. |
 
@@ -247,11 +248,20 @@ lose data rather than features.
           backend:
             condition: service_healthy
         healthcheck:
-          test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:2025"]
+          # Must stay in sync with frontend/Dockerfile HEALTHCHECK. Compose wins at runtime, the
+          # Dockerfile value is what a bare `docker run` of the image gets.
+          # Liveness only: /healthz answers from the process and calls nothing. The probe is Node's
+          # http.get, which never follows a redirect, so a 3xx is a failure that shows in
+          # `docker inspect` rather than a hidden hop. The previous wget --spider of `/` followed the
+          # auth redirect to NEXTAUTH_URL through the public edge, so an edge 502 marked a working
+          # container unhealthy and autoheal (5 s interval, no backoff) restarted it in a loop.
+          # start_period 60s: the entrypoint rewrites `.next` in place before Node listens, and that
+          # has passed 30 s on a loaded VM; a passing probe ends the start period early.
+          test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:2025,path:'/healthz',timeout:5000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))"]
           interval: 30s
-          timeout: 10s
+          timeout: 5s
           retries: 3
-          start_period: 30s
+          start_period: 60s
         labels:
           - "autoheal=true"
 

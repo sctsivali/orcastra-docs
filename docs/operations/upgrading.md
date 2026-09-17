@@ -88,6 +88,16 @@ cp docker-compose.prod.yml docker-compose.prod.yml.bak-$(date -u +%Y%m%dT%H%M%SZ
 mv docker-compose.prod.yml.new docker-compose.prod.yml
 ```
 
+The seventh build of `1.0.0-RC4-hotfix1` (2026-09-17) is the first hotfix1 build that ships
+a changed compose file, and the change is the frontend healthcheck: it probes the container's
+own `/healthz` with a client that never follows a redirect. The earlier probe asked `/`, an
+auth-gated page, and followed its redirect through the public edge, so an edge failure marked
+a healthy frontend unhealthy and the autoheal sidecar restarted it in a loop. The images
+alone are safe on the old file (that build keeps a loopback request's redirect on loopback),
+but only the new file removes the dependency on the edge. The file is also attached to the
+GitHub release with its sha256 in the release notes, for a deployment that cannot reach the
+repository.
+
 The preflight printed the diff. If it is larger than the release notes suggest, your copy
 predates the release you are coming from, and the extra lines are listed in
 [what the compose file gives you](../deployment/vm4-dashboard.md#what-this-compose-file-gives-you-that-older-copies-did-not).
@@ -165,7 +175,7 @@ load. A healthy container is not a working dashboard.
 | `temp_storage.percent_used` | `GET /health` | Graph it. At 100 percent the backend cannot write LXD credentials and answers `503 BACKEND_TEMP_STORAGE_FULL`. |
 | HTTP 503 on cluster routes | access logs | An unreachable cluster now answers 503 where it used to answer 500, 404 or 400 depending on the endpoint. Any alert keyed on 500 will stop firing for real cluster outages, and any alert keyed on 5xx will fire more. Update both. |
 | `BACKEND_TEMP_STORAGE_FULL` | response `code` | Says the fault is your backend's own disk, not a hypervisor. The two used to be indistinguishable, which once reported an entire healthy fleet as offline. |
-| HTTP 429 on ordinary console use | access logs | `RATE_LIMIT_REQUESTS` is a deployment-wide budget, keyed on client IP. The counters are in memory, so each worker would otherwise enforce the whole number; the middleware divides it by `WEB_CONCURRENCY` to make the configured value mean what it says in aggregate. The number to size against is what one client gets, which is this value **divided by** `WEB_CONCURRENCY`, because a browser's keep-alive connection pins it to one worker. At 500 with 4 workers that is 125 a minute per operator, and one operator driving the console was measured at roughly 286. To give a single operator N a minute, set N times `WEB_CONCURRENCY`. A `.env` from a template published before v1.0.0-RC4 carries 100, which is 25 for a pinned client. Behind NAT the pressure runs the other way, since every operator shares one bucket. |
+| HTTP 429 on ordinary console use | access logs | `RATE_LIMIT_REQUESTS` is enforced per backend worker at the full configured value, keyed on client IP (only the forced-refresh budget is shared across workers through Redis). A browser's keep-alive connection pins it to one worker, so one operator gets the configured number a minute; the deployment as a whole can admit up to that number times `WEB_CONCURRENCY`. Size against a single operator: one driving the console was measured at roughly 286 requests a minute, so the code default of 500 is the floor to keep. A `.env` from a template published before v1.0.0-RC4 carries 100, which throttles a single operator; raise it to 500. From the seventh build of `1.0.0-RC4-hotfix1` a 429 carries `Retry-After` as the seconds actually left in the window and `X-RateLimit-Scope` naming the budget (`ip`, `subnet` or `fresh`), and the console counts the wait down under the control that was refused. Behind NAT the pressure runs the other way, since every operator shares one bucket. |
 | autoheal restarts | `docker logs orcastra-dashboard-autoheal` | A restart here means a container was passing its process check while failing its healthcheck. Investigate it, do not just note it. |
 
 ## Rolling back
