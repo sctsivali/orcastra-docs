@@ -154,8 +154,16 @@ Retention targets per log type:
 The same OpenSearch can hold the Docker container logs of other stacks running alongside
 Orcastra, so audit and troubleshooting use one place. Each stack gets a write-only account that
 can create and write only `containers-<stack>-<env>-*`; it cannot read, delete, or touch any
-other index. The stack's Fluent Bit sends with TLS verification against the logging CA. The
-procedure is in `orcastra-cmp/deploy/logging/docs/onboarding-a-stack.md`.
+other index. Logs are shipped with TLS verification against the logging CA, either by the
+generic shipper in `orcastra-cmp/deploy/logging/shipper/` (a Fluent Bit that tails every Docker
+`json-file` log on the host and adds container and compose metadata, without touching the
+application containers) or by a Fluent Bit the stack already runs. The procedure is in
+`orcastra-cmp/deploy/logging/docs/onboarding-a-stack.md`.
+
+The **Container Logs** dashboard (Global tenant) shows volume, levels and errors per stack, host
+and container, with the raw lines below. JSON log lines are parsed on ingest, and the level is
+recognised in common plain-text formats, so the level filter works across very different
+containers.
 
 ---
 
