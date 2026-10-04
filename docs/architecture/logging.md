@@ -100,81 +100,95 @@ The logging healthcheck is documented as a self-contained helper script in [Oper
 
 ## OpenSearch Index Management
 
+### Monthly Indices
+
+Fluent Bit writes Logstash-style daily names (`orcastra-access-2026.10.04`). The index template of
+each log type sets an ingest `default_pipeline` that routes the document to the **monthly** index
+(`orcastra-access-2026.10`), so shippers need no change and the single node stays far below its
+1000-shard limit. One daily index per log type would reach that limit in well under a year.
+
+| Index | Writer | Notes |
+|---|---|---|
+| `orcastra-access-YYYY.MM` | VM 4 Fluent Bit | HTTP request log |
+| `orcastra-audit-YYYY.MM` | VM 4 Fluent Bit | `event_id` as document ID, so a resend never duplicates |
+| `orcastra-app-YYYY.MM` | VM 4 Fluent Bit | application log |
+| `vault-audit-YYYY.MM` | VM 2 Fluent Bit | parsed by the `vault-audit-parse` pipeline |
+| `containers-<stack>-<env>-YYYY.MM` | per-stack Fluent Bit | Docker logs of other stacks, see below |
+| `security-auditlog-YYYY.MM` | OpenSearch security plugin | authentication and permission events |
+
+All templates use one shard and no replica (single node). Templates and pipelines are versioned
+in `orcastra-cmp/deploy/logging/opensearch/` and applied with `scripts/apply-ingest-config.sh`.
+
 ### Index Templates
 
-Three index templates are configured on VM 3 to define field mappings:
+- **`orcastra-access-template`**: HTTP fields such as `method`, `path`, `status_code`, `latency_ms`
+- **`orcastra-audit-template`**: audit fields such as `event_id`, `action`, `actor`, `result`
+- **`orcastra-app-template`**: settings only, dynamic mapping
+- **`vault-audit-template`**: Vault fields such as `type`, `auth`, `request`, `response`
+- **`containers-template`**: fixed fields (`stack`, `env`, `host`, `container_name`, `level`,
+  `message`, `request_id`); any other JSON key a container logs is stored in the `flat_object`
+  field `fields` and searchable as `fields.<key>`. This keeps a stack with many different log
+  formats from exploding the mapping or having documents rejected for type conflicts.
 
-- **`orcastra-access-template`** - Maps HTTP fields: `method`, `path`, `status_code`, `latency_ms`, `client_ip`, `user_agent`
-- **`orcastra-audit-template`** - Maps audit fields: `event_type`, `action`, `actor`, `resource_type`, `resource_id`, `result`
-- **`vault-audit-template`** - Maps Vault fields: `type`, `auth.client_token`, `request.operation`, `request.path`
+### Retention (ISM)
 
-### ISM (Index State Management) Policies
+Retention targets per log type:
 
-Automatic lifecycle management for each index type:
+| Log type | Target |
+|---|---|
+| Access | 90 days |
+| Audit | 3 years |
+| App | 30 days |
+| Vault audit | 1 year |
 
-=== "Access Logs (90 days)"
+!!! warning "Not enforced automatically yet"
+    No ISM policy is attached yet, so indices are kept until removed. With monthly indices the
+    retention is applied per month: an index is deleted once its newest document is older than
+    the target. Agree on the targets before attaching a policy; deletion is irreversible
+    (take a snapshot first, see the runbook).
 
-    ```
-    hot    → 0-7 days    → 1 replica, priority 100
-    warm   → 7-30 days   → force merge to 1 segment, read-only
-    cold   → 30-90 days  → read-only
-    delete → 90+ days    → auto-delete
-    ```
+---
 
-=== "Audit Logs (3 years)"
+## Container Logs From Other Stacks
 
-    ```
-    hot    → 0-30 days   → 1 replica, priority 100
-    warm   → 30-180 days → force merge, read-only
-    cold   → 180 days-3yr → read-only
-    delete → 3+ years    → auto-delete
-    ```
-
-=== "App Logs (30 days)"
-
-    ```
-    hot    → 0-7 days    → 1 replica
-    warm   → 7-30 days   → force merge, read-only
-    delete → 30+ days    → auto-delete
-    ```
-
-=== "Vault Audit (1 year)"
-
-    ```
-    hot    → 0-30 days   → 1 replica
-    warm   → 30-180 days → force merge, read-only
-    cold   → 180 days-1yr → read-only
-    delete → 1+ year     → auto-delete
-    ```
+The same OpenSearch can hold the Docker container logs of other stacks running alongside
+Orcastra, so audit and troubleshooting use one place. Each stack gets a write-only account that
+can create and write only `containers-<stack>-<env>-*`; it cannot read, delete, or touch any
+other index. The stack's Fluent Bit sends with TLS verification against the logging CA. The
+procedure is in `orcastra-cmp/deploy/logging/docs/onboarding-a-stack.md`.
 
 ---
 
 ## OpenSearch Security Model
 
-### Users
+### People (SSO)
+
+Users sign in to OpenSearch Dashboards with Authentik. Membership of the Authentik group
+`opensearch-admins` grants full access; `opensearch-viewers` grants read-only access. Users in
+neither group are refused by Authentik. Tokens are bound to the OpenSearch Dashboards provider
+(issuer and audience checks), so a token issued for another application is not accepted.
+
+### Internal Users
 
 | User | Role | Purpose |
 |---|---|---|
-| `admin` | All access | Administrative operations, dashboard import |
-| `fluentbit` | `log_writer` | Write-only access to `orcastra-*` and `vault-audit-*` indices |
-| `audit_viewer` | `audit_reader` | Read-only access to audit indices |
+| `admin` | `all_access` | Break-glass sign-in and administrative API calls |
 | `kibanaserver` | (built-in) | OpenSearch Dashboards internal user |
+| `fluentbit` | `log_writer` | VM 2 and VM 4 shippers: `orcastra-*`, `vault-audit-*` |
+| `audit_viewer` | `audit_reader` | Read-only access to audit indices |
+| `fluentbit-<stack>-<env>` | `writer_<stack>_<env>` | Container logs of one stack and environment, write-only |
 
-!!! warning "Per-user unique bcrypt hashes"
-    Every internal user MUST have a unique bcrypt hash. Do not depend on a repo
-    helper script being present on the target VM. Generate each hash locally,
-    then write `internal_users.yml` by hand from the deployment guide.
+Internal users are managed through the security REST API (`scripts/provision-stack.sh` for
+writers); password hashes are not kept in files.
 
-### Fluent Bit Writer Role
+### Fluent Bit Writer Role (VM 2, VM 4)
 
 ```yaml
-fluentbit_writer:
+log_writer:
+  cluster_permissions: ["cluster_monitor", "cluster_composite_ops"]
   index_permissions:
-    - index_patterns: ["orcastra-*", "vault-audit-*"]
-      allowed_actions:
-        - crud
-        - create_index
-        - manage
+    - index_patterns: ["orcastra-access-*", "orcastra-audit-*", "orcastra-app-*", "vault-audit-*"]
+      allowed_actions: ["crud", "create_index", "manage"]
 ```
 
 ---

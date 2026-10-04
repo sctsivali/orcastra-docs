@@ -73,8 +73,9 @@ path "pki/cert/ca"       { capabilities = ["read"] }
 | Browser → Frontend | HTTPS (via Cloudflare Tunnel) | Automatic with domain setup |
 | Frontend → Backend | HTTP (internal Docker network) | Same VM, bridge network |
 | Backend → Vault | HTTP | Internal LXD network |
-| Backend → OpenSearch | HTTPS (self-signed) | TLS verify disabled |
-| Fluent Bit → OpenSearch | HTTPS (self-signed) | TLS verify disabled |
+| Backend → OpenSearch | HTTPS (private CA on VM 3) | `OPENSEARCH_SSL_VERIFY` (archive feature); verifying needs the logging CA in the backend's trust store |
+| Fluent Bit → OpenSearch | HTTPS (private CA on VM 3) | Verify against the logging CA with `tls.verify On` and `tls.ca_file` (recommended) |
+| Browser → OpenSearch Dashboards | HTTPS (via Cloudflare Tunnel) | Sign-in through Authentik |
 
 ### At Rest
 
@@ -108,7 +109,7 @@ Logs are:
 
 - Rotated via `logrotate` (daily, 90 days retention)
 - Forwarded to OpenSearch via Fluent Bit on VM 2
-- Indexed as `vault-audit-*` with 1-year ISM policy
+- Indexed as `vault-audit-*` (retention target 1 year, see [Logging](logging.md#retention-ism))
 
 ### Application Audit
 
@@ -119,7 +120,7 @@ The backend generates structured audit logs for:
 - Data modifications (CRUD operations on nodes, secrets)
 - Administrative actions (settings changes, user management)
 
-These are indexed in OpenSearch as `orcastra-audit-*` with a 3-year retention ISM policy.
+These are indexed in OpenSearch as `orcastra-audit-*` (retention target 3 years, see [Logging](logging.md#retention-ism)).
 
 ---
 

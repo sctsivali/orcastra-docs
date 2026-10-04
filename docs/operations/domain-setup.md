@@ -58,11 +58,11 @@ In the Cloudflare Dashboard, go to your tunnel → **Public Hostname** tab. Add 
 | `app` | `orcastra.io` | `http://localhost:4321` | Frontend (VM 4) |
 | `api` | `orcastra.io` | `http://localhost:8765` | Backend API (VM 4) |
 | `sso` | `orcastra.io` | `http://<VM1_PRIVATE_IP>:9000` | Authentik (VM 1) |
-| `logs` | `orcastra.io` | `https://<VM3_PRIVATE_IP>:5601` | OpenSearch Dashboards (VM 3) |
+| `logs` | `orcastra.io` | `http://<VM3_PRIVATE_IP>:5601` | OpenSearch Dashboards (VM 3) |
 
 !!! tip "Important Settings"
     - **`api.orcastra.io`:** Click "Additional application settings" → enable **WebSockets**
-    - **`logs.orcastra.io`:** Set Type = HTTPS, and enable **No TLS Verify** (OpenSearch uses self-signed certificates)
+    - **`logs.orcastra.io`:** Type = HTTP. Dashboards serves plain HTTP on the private network; Cloudflare terminates TLS. Dashboards binds to the private IP only, so the tunnel connector must reach VM 3 over the private network.
     - If a subdomain already has a DNS record, **delete it first** in DNS settings
 
 ---
@@ -122,7 +122,7 @@ The `entrypoint.sh` script automatically replaces `NEXT_PUBLIC_*` URLs on every 
 3. After login → should redirect back to `https://app.orcastra.io`
 4. Open browser DevTools → Console → **no CORS errors**
 5. API calls should go to `https://api.orcastra.io/api/v1/...`
-6. Open `https://logs.orcastra.io` → should show OpenSearch Dashboards
+6. Open `https://logs.orcastra.io` → should show the OpenSearch Dashboards login with **Log in with Orcastra SSO**
 
 !!! tip "Closing Raw IP Access"
     After connecting the domain, you can optionally close raw IP:port access by removing the LXD port forwards for ports `4321` and `8765`. Test domain-only access first before removing port forwards.
