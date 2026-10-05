@@ -8,11 +8,12 @@ from . import compose, pki
 from . import topology as T
 from . import vault_api as V
 from .httpapi import HttpError
+from .phases import p13_cmp
 
 _STACKS = {
     "authentik": (f"{T.REMOTE_DIR}/authentik", "authentik", ""),
     "opensearch": (f"{T.REMOTE_DIR}/opensearch", "opensearch", ""),
-    "cmp": (f"{T.REMOTE_DIR}/cmp", T.COMPOSE_PROJECT, "docker-compose.prod.yml"),
+    "cmp": (p13_cmp.DIR, T.COMPOSE_PROJECT, p13_cmp.FILES),
 }
 
 
@@ -47,7 +48,7 @@ def run(ctx) -> int:
         bad += 1
     timer = ctx.proc.run(["systemctl", "is-active", "orcastra-maintain.timer"])
     (log.ok if timer.out.strip() == "active" else log.warn)(f"Watchdog timer: {timer.out.strip() or 'unknown'}")
-    node = os.path.join(ctx.pki_dir, "node.crt")
+    node = os.path.join(ctx.pki_dir, "node.pem")
     if os.path.exists(node):
         log.ok(f"OpenSearch node certificate valid until {pki.expiry(node)}")
     for svc in ("cmp", "authentik", "api", "logs"):

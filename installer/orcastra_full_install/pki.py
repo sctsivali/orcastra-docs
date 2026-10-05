@@ -1,8 +1,9 @@
-"""A private CA for OpenSearch, created with openssl on the host, replacing the bundled
-demo certificates (whose private keys, including the `kirk` admin cert, are public).
+"""The OpenSearch certificates of docs/deployment/vm3-opensearch.md Step 5, created with
+openssl on the host: a private CA, the node certificate and the security admin
+certificate (the demo certificates' private keys, including `kirk`, are public).
 
-Distinguished names are written in RFC 2253 order (most specific first) where OpenSearch
-compares them, which is the reverse of the order openssl's -subj takes."""
+Subjects, key sizes, lifetimes and file names follow the guide, so `opensearch.yml` (taken
+from the guide verbatim) matches its nodes_dn and admin_dn."""
 from __future__ import annotations
 
 import os
@@ -11,11 +12,12 @@ from typing import Dict, List
 
 from orcastra_core.errors import InstallError
 
-CA_DAYS, LEAF_DAYS = 3650, 1825
-NODE_SUBJ = "/OU=Logging/O=Orcastra/CN=opensearch-node1"
-ADMIN_SUBJ = "/OU=Logging/O=Orcastra/CN=orcastra-os-admin"
-NODE_DN = "CN=opensearch-node1,O=Orcastra,OU=Logging"
-ADMIN_DN = "CN=orcastra-os-admin,O=Orcastra,OU=Logging"
+CA_DAYS, LEAF_DAYS = 3650, 825
+CA_SUBJ = "/O=Orcastra/OU=logging/CN=Orcastra Logging Root CA"
+NODE_SUBJ = "/O=Orcastra/OU=logging/CN=opensearch-node1"
+ADMIN_SUBJ = "/O=Orcastra/OU=logging/CN=orcastra-logging-admin"
+FILES = {"ca": "root-ca.pem", "ca_key": "root-ca-key.pem", "node": "node.pem",
+         "node_key": "node-key.pem", "admin": "admin.pem", "admin_key": "admin-key.pem"}
 
 
 def _run(argv: List[str], what: str) -> None:
@@ -25,24 +27,32 @@ def _run(argv: List[str], what: str) -> None:
         raise InstallError(f"openssl failed ({what}): {cp.stderr.strip()[-300:]}")
 
 
-def ensure(pki_dir: str, node_ip: str, node_names: List[str]) -> Dict[str, str]:
-    """Create ca, node and admin key pairs once. Returns their paths."""
+def paths(pki_dir: str) -> Dict[str, str]:
+    return {k: os.path.join(pki_dir, v) for k, v in FILES.items()}
+
+
+def ensure(pki_dir: str, node_ip: str, extra_ips: List[str]) -> Dict[str, str]:
+    """Create the three key pairs once. SANs: the names Dashboards and the forwarders use
+    (`opensearch`, `localhost`, 127.0.0.1, the node's private IP) plus the addresses
+    browsers reach Dashboards on (the guide's LOGS_DOMAIN)."""
     os.makedirs(pki_dir, mode=0o700, exist_ok=True)
-    p = {"ca": "ca.crt", "ca_key": "ca.key", "node": "node.crt", "node_key": "node.key",
-         "admin": "admin.crt", "admin_key": "admin.key"}
-    p = {k: os.path.join(pki_dir, v) for k, v in p.items()}
+    p = paths(pki_dir)
     old = os.umask(0o077)
     try:
         if not os.path.exists(p["ca"]):
-            _run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:3072",
-                  "-out", p["ca_key"]], "CA key")
+            _run(["openssl", "genpkey", "-quiet", "-algorithm", "RSA", "-pkeyopt",
+                  "rsa_keygen_bits:4096", "-out", p["ca_key"]], "CA key")
             _run(["openssl", "req", "-x509", "-new", "-key", p["ca_key"], "-sha256",
-                  "-days", str(CA_DAYS), "-subj", "/OU=Logging/O=Orcastra/CN=Orcastra Logging CA",
-                  "-addext", "basicConstraints=critical,CA:TRUE",
-                  "-addext", "keyUsage=critical,keyCertSign,cRLSign", "-out", p["ca"]], "CA cert")
-        san = ",".join([f"IP:{node_ip}"] + [f"DNS:{n}" for n in node_names])
-        _leaf(p, "node", NODE_SUBJ, san)
-        _leaf(p, "admin", ADMIN_SUBJ, None)
+                  "-days", str(CA_DAYS), "-out", p["ca"], "-subj", CA_SUBJ,
+                  "-addext", "basicConstraints=critical,CA:TRUE,pathlen:0",
+                  "-addext", "keyUsage=critical,keyCertSign,cRLSign"], "CA cert")
+        ips = ["127.0.0.1", node_ip] + [i for i in extra_ips if i not in ("127.0.0.1", node_ip)]
+        san = ",".join(["DNS:opensearch", "DNS:localhost"] + [f"IP:{i}" for i in ips])
+        _leaf(p, "node", NODE_SUBJ, ["keyUsage=critical,digitalSignature,keyEncipherment",
+                                     "extendedKeyUsage=serverAuth,clientAuth",
+                                     f"subjectAltName={san}"])
+        _leaf(p, "admin", ADMIN_SUBJ, ["keyUsage=critical,digitalSignature",
+                                       "extendedKeyUsage=clientAuth"])
     finally:
         os.umask(old)
     for k in ("ca", "node", "admin"):
@@ -50,26 +60,21 @@ def ensure(pki_dir: str, node_ip: str, node_names: List[str]) -> Dict[str, str]:
     return p
 
 
-def _leaf(p: Dict[str, str], name: str, subj: str, san) -> None:
+def _leaf(p: Dict[str, str], name: str, subj: str, ext: List[str]) -> None:
     crt, key = p[name], p[f"{name}_key"]
     if os.path.exists(crt):
         return
-    csr = crt + ".csr"
-    ext = crt + ".ext"
-    _run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048",
+    csr, extfile = crt + ".csr", crt + ".ext"
+    _run(["openssl", "genpkey", "-quiet", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:3072",
           "-out", key], f"{name} key")
     _run(["openssl", "req", "-new", "-key", key, "-subj", subj, "-out", csr], f"{name} csr")
-    lines = ["basicConstraints=CA:FALSE", "keyUsage=critical,digitalSignature,keyEncipherment",
-             "extendedKeyUsage=serverAuth,clientAuth"]
-    if san:
-        lines.append(f"subjectAltName={san}")
-    with open(ext, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
+    with open(extfile, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(["basicConstraints=CA:FALSE"] + ext) + "\n")
     _run(["openssl", "x509", "-req", "-in", csr, "-CA", p["ca"], "-CAkey", p["ca_key"],
-          "-CAcreateserial", "-days", str(LEAF_DAYS), "-sha256", "-extfile", ext, "-out", crt],
+          "-CAcreateserial", "-sha256", "-days", str(LEAF_DAYS), "-extfile", extfile, "-out", crt],
          f"{name} cert")
     os.unlink(csr)
-    os.unlink(ext)
+    os.unlink(extfile)
 
 
 def expiry(cert: str) -> str:

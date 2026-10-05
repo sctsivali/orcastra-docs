@@ -1,7 +1,7 @@
 """Phase 12 - Fluent Bit on orca-vault (docs/deployment/vm2-vault.md, step 7): ships the
-Vault audit log to OpenSearch. Installed from Fluent Bit's signed apt repository at a
-pinned version instead of piping the upstream install script from `master`, and it
-verifies the OpenSearch certificate against the installer's CA."""
+Vault audit log to OpenSearch, verifying its certificate against the logging CA. Installed
+from Fluent Bit's signed apt repository at a pinned version instead of piping the upstream
+install script from `master`."""
 from __future__ import annotations
 
 from orcastra_core.errors import InstallError
@@ -30,15 +30,15 @@ dpkg -s fluent-bit >/dev/null
 install -d -m 0750 /var/lib/fluent-bit/storage
 """
 
-CA_PATH = "/etc/fluent-bit/orcastra-ca.pem"
+CA_PATH = "/etc/fluent-bit/orcastra-logging-ca.pem"   # where the guide puts it
 
 
 def conf(ctx) -> str:
     c = _blocks.VAULT_FLUENTBIT_CONF
+    if f"tls.ca_file       {CA_PATH}" not in c or "tls.verify        On" not in c:
+        raise InstallError("internal error: the guide's Fluent Bit block no longer verifies the CA")
     for old, new in (("<VM3_PRIVATE_IP>", ctx.ip("opensearch")),
-                     ("<FLUENTBIT_PASSWORD_FROM_VM3>", ctx.secrets.get("fluentbit_password")),
-                     ("    tls.verify        Off\n",
-                      f"    tls.verify        On\n    tls.ca_file       {CA_PATH}\n")):
+                     ("<FLUENTBIT_PASSWORD_FROM_VM3>", ctx.secrets.get("fluentbit_password"))):
         if c.count(old) != 1:
             raise InstallError(f"internal error: guide block changed, cannot place {old.strip()!r}")
         c = c.replace(old, new)
@@ -57,7 +57,7 @@ def run(ctx) -> None:
     r = ctx.remote("vault")
     r.run(_INSTALL.format(ver=T.PINS["fluentbit_apt"]), what="install Fluent Bit", timeout=1200)
     changed = False
-    ca = pki.read(f"{ctx.pki_dir}/ca.crt")
+    ca = pki.read(f"{ctx.pki_dir}/root-ca.pem")
     for path, body, mode in ((CA_PATH, ca, "0644"), ("/etc/fluent-bit/fluent-bit.conf", conf(ctx), "0600")):
         if not r.same_content(path, body):
             r.write(path, body, mode=mode)

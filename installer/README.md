@@ -52,7 +52,7 @@ manual path cannot drift apart.
 
 - Mini: the heredocs in `docs/mini/quick-start.md` become `orcastra_mini_install/_blocks.py`
   (`tools/gen_blocks.py`), checked by `tools/check_templates.py`.
-- Full: the heredocs, fenced blocks and OpenSearch `curl -X PUT` bodies in
+- Full: the heredocs, fenced blocks and OpenSearch `$OS/<path> -X PUT` bodies in
   `docs/deployment/vm2..vm4` become `orcastra_full_install/_blocks.py`
   (`tools/gen_full_blocks.py`). `tools/check_full_assets.py` re-extracts them, checks that
   every installer-side edit still applies, and lists the files the installer owns outright
@@ -90,4 +90,6 @@ or a local file. `dist/` is gitignored.
 
 A new CMP release for the Full installer needs its `docker-compose.prod.yml` under
 `orcastra_full_install/assets/cmp/<version>/` and a row in `CMP_COMPOSE_SHA256`
-(`topology.py`). The first row is what `latest` installs.
+(`topology.py`). The first row is what `latest` installs. Every release compose is used
+with `assets/cmp/docker-compose.orcastra.yml`, which mounts the logging CA the guide's
+Fluent Bit config reads. Drop that mount once a release compose carries it.

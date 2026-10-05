@@ -26,6 +26,7 @@ sys.path.insert(0, HERE)
 
 import gen_full_blocks  # noqa: E402
 from orcastra_full_install import _blocks, cmp_render, os_render, topology  # noqa: E402
+from orcastra_full_install.phases import p12_vault_logging  # noqa: E402
 
 
 class _Secrets:
@@ -63,8 +64,13 @@ def main() -> int:
         os_render.compose(3)
         os_render.opensearch_yml()
         os_render.internal_users({"admin": "a", "audit_viewer": "b", "kibanaserver": "c"})
-        os_render.dashboards_yml("p")
+        os_render.dashboards_yml()
+        os_render.env(_Secrets(), "10.77.0.13", "192.0.2.10")
+        p12_vault_logging.conf(_Ctx())
         cmp_render.env(_Ctx())
+        if "/fluent-bit/etc/orcastra-logging-ca.pem" not in _blocks.CMP_FLUENTBIT_CONF:
+            raise ValueError("the CMP Fluent Bit config no longer reads the logging CA the "
+                             "installer mounts (assets/cmp/docker-compose.orcastra.yml)")
     except Exception as exc:  # noqa: BLE001 - every failure is reported
         errors.append(f"renderer no longer matches the guide: {exc}")
     for ver, digest in topology.CMP_COMPOSE_SHA256.items():
