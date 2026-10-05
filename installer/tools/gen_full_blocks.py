@@ -28,7 +28,9 @@ def read(name: str) -> str:
 
 
 def heredocs(text: str) -> dict:
-    """Map target path -> body for every `cat > PATH << 'TAG'` heredoc."""
+    """Map target path -> body for every `cat > PATH << 'TAG'` heredoc. The first heredoc
+    for a path wins: later ones belong to optional steps (vm3 Step 13 rewrites
+    roles_mapping.yml for SSO)."""
     out, lines, i = {}, text.splitlines(), 0
     while i < len(lines):
         m = _HEREDOC.match(lines[i])
@@ -40,7 +42,7 @@ def heredocs(text: str) -> dict:
         while i < len(lines) and lines[i].strip() != tag:
             body.append(lines[i])
             i += 1
-        out[target] = "\n".join(body) + "\n"
+        out.setdefault(target, "\n".join(body) + "\n")
         i += 1
     return out
 
@@ -73,18 +75,19 @@ def fence_after(text: str, anchor: str, lang: str) -> str:
 
 
 def opensearch_puts(text: str) -> list:
-    """Every `curl ... -X PUT "https://localhost:9200/<path>" ... -d '<json>'` block in
-    document order, as [path, parsed body]."""
+    """Every `$OS/<path> -X PUT ... -d '<json>'` command in document order (a block may hold
+    several), as [path, parsed body]. The fluentbit user (a generated password) and the
+    replica loop (run with the admin certificate) are done by the installer itself."""
     out = []
+    call = re.compile(r"^\$OS/(\S+) -X PUT .*?-d '(.*?\n\})'", re.S | re.M)
     for _, lang, body in fences(text):
-        if lang != "bash" or "-X PUT" not in body or "localhost:9200/" not in body:
+        if lang != "bash":
             continue
-        path = re.search(r'https://localhost:9200/([^"\s]+)', body).group(1)
-        if path.startswith("_plugins/_security") or " -d '" not in body:
-            continue  # the fluentbit user body is built from a generated password
-        raw = body.split(" -d '", 1)[1]
-        raw = raw[:raw.rstrip().rindex("'")]
-        out.append([path, json.loads(raw.replace("'\\''", "'"))])
+        for m in call.finditer(body):
+            path = m.group(1)
+            if path.startswith("_plugins/_security"):
+                continue
+            out.append([path, json.loads(m.group(2).replace("'\\''", "'"))])
     return out
 
 
@@ -96,6 +99,7 @@ def extract() -> dict:
         "VAULT_LOGROTATE": fence_after(vm2, "Create `/etc/logrotate.d/vault-audit`", ""),
         "VAULT_FLUENTBIT_CONF": fence_after(vm2, "Edit `/etc/fluent-bit/fluent-bit.conf`", "ini"),
         "VAULT_FLUENTBIT_PARSER": fence_after(vm2, "Edit `/etc/fluent-bit/parsers.conf`", "ini"),
+        "OS_ENV": h3[".env"],
         "OS_COMPOSE": h3["docker-compose.yml"],
         "OS_YML": h3["config/opensearch.yml"],
         "OS_INTERNAL_USERS": h3["config/internal_users.yml"],

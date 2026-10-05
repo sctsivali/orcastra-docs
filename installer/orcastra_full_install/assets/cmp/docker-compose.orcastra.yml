@@ -1,0 +1,7 @@
+# Managed by orcastra-full. Applied on top of the release docker-compose.prod.yml: mounts the
+# logging CA that config/fluent-bit/fluent-bit.conf (docs/deployment/vm4-dashboard.md) uses to
+# verify OpenSearch. The release compose does not mount it yet.
+services:
+  fluent-bit:
+    volumes:
+      - ./config/fluent-bit/orcastra-logging-ca.pem:/fluent-bit/etc/orcastra-logging-ca.pem:ro

@@ -25,7 +25,7 @@ class HttpError(InstallError):
 class Client:
     def __init__(self, base: str, *, headers: Optional[Dict[str, str]] = None,
                  basic: Optional[Tuple[str, str]] = None, cafile: Optional[str] = None,
-                 timeout: float = 20.0) -> None:
+                 cert: Optional[Tuple[str, str]] = None, timeout: float = 20.0) -> None:
         self.base = base.rstrip("/")
         self.headers = dict(headers or {})
         if basic:
@@ -35,6 +35,8 @@ class Client:
         self.ctx = None
         if self.base.startswith("https"):
             self.ctx = ssl.create_default_context(cafile=cafile)  # verified, always
+            if cert:
+                self.ctx.load_cert_chain(cert[0], cert[1])
         # admin traffic to the instances must never go through a proxy from the environment
         handlers = [urllib.request.ProxyHandler({})]
         if self.ctx is not None:

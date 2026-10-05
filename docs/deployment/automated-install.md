@@ -152,7 +152,10 @@ and the token the CMP uses for role sync.
 |---|---|---|
 | Vault storage | integrated `raft` | the guide's `vault.hcl` has no storage stanza |
 | Vault dashboard token | periodic (30 days), renewed by the watchdog | a token created with `-ttl=0` gets the 768h default and expires after 32 days |
-| OpenSearch TLS | a private CA created on the host, verified by Vault's Fluent Bit and by Dashboards (the CMP's Fluent Bit sidecar keeps `tls.verify Off`, because the release compose only mounts its three config files) | the bundled demo certificates have public private keys |
+| OpenSearch certificates | created on the host exactly as in VM 3 Step 5, with the host address in the node certificate in place of `LOGS_DOMAIN` | the CA key stays on the host, under `pki/`, and never enters an instance |
+| CMP Fluent Bit CA | mounted by a small `docker-compose.orcastra.yml` next to the release compose | the release `docker-compose.prod.yml` does not mount `orcastra-logging-ca.pem` yet |
+| Dashboards session cookie | `opensearch_security.cookie.secure: false` | Dashboards is served over plain HTTP on the host address, and a secure cookie never reaches the browser over HTTP, so the login would loop |
+| Dashboards sign-in through Authentik | not configured, sign in with `admin` | VM 3 Step 13 is optional and written for HTTPS domains (`LOGS_DOMAIN`, `AUTHENTIK_DOMAIN`), so follow it by hand once both have one |
 | Role-sync token | a service account limited to reading users and groups and moving users between the three role groups | the guide uses an `akadmin` token |
 | PostgreSQL and Redis on orca-cmp | bound to `127.0.0.1` | published ports bypass the guest firewall |
 | Trusted proxies | loopback and the Docker networks only | the guide trusts every private range, so any LAN client could set its own client IP |
@@ -252,7 +255,9 @@ Vault seals itself every time it restarts. The CMP keeps serving the cluster lis
 its own start, so a sealed Vault breaks cluster registration and certificate issuance
 silently. `orcastra-maintain.timer` runs every minute on the host: it unseals Vault with the
 keys in `vault-init.json`, restarts the CMP backend so it reloads the clusters, and renews the
-dashboard token before it runs low. Its actions go to the journal:
+dashboard token before it runs low. Once an hour it also removes the replica from any
+OpenSearch index a plugin created with one, which on a single node would turn the cluster
+yellow (the loop in VM 3 Step 10, run for you). Its actions go to the journal:
 
 ```bash
 journalctl -u orcastra-maintain.service
@@ -291,7 +296,7 @@ The verification phase (and `orcastra-full verify`) fails the run when any of th
 - the four instances run with their addresses, and `ssh` works to each
 - the firewall matrix holds, including a probe container published on an unlisted port
 - Vault is unsealed on raft, and the dashboard token is periodic, renewable and not root
-- OpenSearch is healthy over TLS verified by the private CA, with the four ISM policies and the dashboards, and no demo certificate
+- OpenSearch is green with no unassigned shard, over TLS verified by the private CA, with the five ISM policies and the dashboards, and no demo certificate
 - every public URL answers through the forwards, and the issuer seen there matches the CMP's
 - a sign-in from the CMP redirects to Authentik's authorize endpoint
 - from inside the CMP containers: Vault with the dashboard token, the Authentik API with the role-sync token, and the issuer through the NAT rule

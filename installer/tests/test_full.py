@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,8 @@ sys.path.insert(0, os.path.join(INSTALLER, "tools"))
 import check_full_assets  # noqa: E402
 from orcastra_core.errors import ConfigError, InstallError  # noqa: E402
 from orcastra_full_install import (authentik_api, cloudinit, cmp_render, config as C,  # noqa: E402
-                                   firewall, os_render, secrets, topology as T, wizard_lib as W)
+                                   _blocks, bundled, firewall, os_render, pki, secrets,
+                                   topology as T, wizard_lib as W)
 from orcastra_full_install.cli import build_parser  # noqa: E402
 from orcastra_full_install.remote import Remote  # noqa: E402
 
@@ -160,16 +162,87 @@ class Rendering(unittest.TestCase):
 
     def test_opensearch_without_demo_certs(self):
         y = os_render.opensearch_yml()
-        self.assertNotIn("allow_unsafe_democertificates", y)
+        self.assertNotIn("allow_unsafe_democertificates: true", y)
         self.assertNotIn("kirk", y)
         self.assertIn("nodes_dn", y)
         c = os_render.compose(3)
         self.assertIn("-Xms3g -Xmx3g", c)
         self.assertIn("DISABLE_INSTALL_DEMO_CONFIG=true", c)
         self.assertNotIn('"9300:9300"', c)
-        d = os_render.dashboards_yml("pw")
+        d = os_render.dashboards_yml()
         self.assertIn("verificationMode: full", d)
-        self.assertNotIn("${", d)
+        self.assertIn("cookie.secure: false", d)
+        self.assertNotIn("cookie.secure: true", d)
+        self.assertNotIn("opensearch.password", d.replace("# opensearch.password", ""))
+        env = os_render.env(check_full_assets._Secrets(), "10.77.0.13", "192.0.2.10")
+        self.assertIn("VM3_PRIVATE_IP=10.77.0.13\n", env)
+        self.assertIn("FLUENTBIT_PASSWORD=", env)
+
+    def test_guide_objects_in_order(self):
+        paths = [p for p, _ in _blocks.OS_API]
+        self.assertEqual(len(paths), 13)
+        self.assertEqual(_blocks.OS_API[-1][1]["persistent"],
+                         {"plugins.index_state_management.history.number_of_replicas": 0})
+        self.assertLess(paths.index("_index_template/security-auditlog-template"),
+                        paths.index("_plugins/_ism/policies/security-auditlog-policy"))
+        self.assertLess(paths.index("_snapshot/orcastra-archive"),
+                        paths.index("_plugins/_ism/policies/orcastra-access-policy"))
+        self.assertFalse([p for p in paths if p.startswith("_plugins/_security")])
+
+    def test_pki_matches_the_guide_dns(self):
+        if not shutil.which("openssl"):
+            self.skipTest("openssl missing")
+        with tempfile.TemporaryDirectory() as d:
+            p = pki.ensure(d, "10.77.0.13", ["192.0.2.10"])
+            def subject(cert):
+                return subprocess.run(["openssl", "x509", "-noout", "-subject", "-nameopt", "RFC2253",
+                                       "-in", cert], stdout=subprocess.PIPE,
+                                      universal_newlines=True).stdout.strip().split("=", 1)[1]
+            y = os_render.opensearch_yml()
+            self.assertIn(f'"{subject(p["node"])}"', y)
+            self.assertIn(f'"{subject(p["admin"])}"', y)
+            san = subprocess.run(["openssl", "x509", "-noout", "-ext", "subjectAltName", "-in", p["node"]],
+                                 stdout=subprocess.PIPE, universal_newlines=True).stdout
+            for want in ("DNS:opensearch", "IP Address:10.77.0.13", "IP Address:192.0.2.10"):
+                self.assertIn(want, san)
+            self.assertEqual(os.stat(p["ca_key"]).st_mode & 0o777, 0o600)
+            mtime = os.stat(p["node"]).st_mtime
+            pki.ensure(d, "10.77.0.13", ["192.0.2.10"])
+            self.assertEqual(os.stat(p["node"]).st_mtime, mtime)
+
+    def test_watchdog_replica_heal_is_best_effort(self):
+        from orcastra_full_install import maintain, opensearch_api
+        from orcastra_full_install.httpapi import HttpError
+        logged = []
+        ctx = type("C", (), {"log": type("L", (), {"ok": lambda s, m: logged.append(m),
+                                                   "warn": lambda s, m: logged.append("W " + m)})()})()
+        calls = []
+        orig = (opensearch_api.health, opensearch_api.zero_replicas)
+        try:
+            opensearch_api.health = lambda c: {"status": "green", "unassigned_shards": 0}
+            opensearch_api.zero_replicas = lambda c: calls.append(1) or []
+            maintain._zero_replicas(ctx)
+            self.assertEqual(calls, [])
+            opensearch_api.health = lambda c: {"status": "yellow", "unassigned_shards": 1}
+            opensearch_api.zero_replicas = lambda c: [".opendistro-ism-managed-index-history-x"]
+            maintain._zero_replicas(ctx)
+            self.assertIn("Set 0 replicas on .opendistro-ism-managed-index-history-x", logged)
+            def down(c):
+                raise HttpError(0, "refused", "https://x")
+            opensearch_api.health = down
+            maintain._zero_replicas(ctx)
+            self.assertTrue(logged[-1].startswith("W OpenSearch replica check skipped"))
+        finally:
+            opensearch_api.health, opensearch_api.zero_replicas = orig
+
+    def test_logging_ca_paths(self):
+        from orcastra_full_install.phases import p12_vault_logging, p13_cmp
+        c = p12_vault_logging.conf(check_full_assets._Ctx())
+        self.assertIn("tls.verify        On", c)
+        self.assertIn(p12_vault_logging.CA_PATH, c)
+        self.assertNotIn("<", c)
+        override = bundled.text("cmp/docker-compose.orcastra.yml")
+        self.assertIn(f"./{p13_cmp.CA}:/fluent-bit/etc/orcastra-logging-ca.pem:ro", override)
 
     def test_cloud_init_carries_no_secret(self):
         ud = cloudinit.user_data("ssh-ed25519 AAAA test", vm=True)

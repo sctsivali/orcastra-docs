@@ -9,6 +9,7 @@ from . import opensearch_api as OS
 from . import probes
 from . import topology as T
 from . import vault_api as V
+from .httpapi import HttpError
 
 Check = Callable[[str, bool, str], None]
 
@@ -80,12 +81,29 @@ def vault(ctx, check: Check) -> None:
           f"policies={info.get('policies')} ttl={int(info.get('ttl') or 0) // 3600}h")
 
 
+def _health(ctx, wait: int = 180) -> dict:
+    """OpenSearch answers 503 for a minute or two after a boot while its security index
+    loads, so give it that long before calling it down."""
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            return OS.health(ctx)
+        except HttpError as exc:
+            if time.monotonic() > deadline:
+                return {"status": f"unreachable (HTTP {exc.status})"}
+        time.sleep(10)
+
+
 def opensearch(ctx, check: Check) -> None:
-    h = OS.health(ctx)
-    check("OpenSearch health green/yellow (TLS verified by the private CA)",
-          h.get("status") in ("green", "yellow"), str(h.get("status")))
-    pol = OS.ism_policies(ctx)
-    check("4 ISM policies", len([p for p in pol if p.endswith("-policy")]) >= 4, ", ".join(pol))
+    h = _health(ctx)
+    if not h.get("number_of_nodes"):
+        check("OpenSearch answers over TLS", False, str(h.get("status")))
+        return
+    check("OpenSearch health green, no unassigned shards (TLS verified by the private CA)",
+          h.get("status") == "green" and not h.get("unassigned_shards"),
+          f"{h.get('status')}, unassigned={h.get('unassigned_shards')}")
+    pol = set(OS.ism_policies(ctx))
+    check("5 ISM policies from the guide", set(OS.POLICIES) <= pol, ", ".join(sorted(pol)))
     check("dashboards imported", OS.count_dashboards(ctx) >= 4, str(OS.count_dashboards(ctx)))
     demo = ctx.remote("opensearch").run("docker exec opensearch sh -c 'ls config/esnode.pem config/kirk.pem 2>/dev/null' || true",
                                         check=False).out.strip()

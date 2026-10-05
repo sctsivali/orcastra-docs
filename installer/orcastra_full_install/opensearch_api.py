@@ -18,10 +18,23 @@ NDJSON = ("access-logs-dashboard-v3.ndjson", "audit-logs-dashboard-v3.ndjson",
           "logs-overview-dashboard.ndjson", "vault-audit-dashboard.ndjson")
 
 
+POLICIES = ("orcastra-access-policy", "orcastra-app-policy", "orcastra-audit-policy",
+            "vault-audit-policy", "security-auditlog-policy")
+
+
+def _ca(ctx) -> str:
+    return os.path.join(ctx.pki_dir, "root-ca.pem")
+
+
 def client(ctx, user: str = "admin", password: str = None) -> Client:
     pw = password if password is not None else ctx.secrets.get("os_admin_password")
-    return Client(f"https://{ctx.ip('opensearch')}:9200", basic=(user, pw),
-                  cafile=os.path.join(ctx.pki_dir, "ca.crt"), timeout=30)
+    return Client(f"https://{ctx.ip('opensearch')}:9200", basic=(user, pw), cafile=_ca(ctx), timeout=30)
+
+
+def admin_cert_client(ctx) -> Client:
+    """The security admin certificate: the only identity allowed to change system indices."""
+    return Client(f"https://{ctx.ip('opensearch')}:9200", cafile=_ca(ctx), timeout=30,
+                  cert=(os.path.join(ctx.pki_dir, "admin.pem"), os.path.join(ctx.pki_dir, "admin-key.pem")))
 
 
 def dashboards(ctx) -> Client:
@@ -75,6 +88,30 @@ def apply_guide_objects(ctx) -> List[str]:
             c.put("/" + path, body)
         done.append(path)
     return done
+
+
+def attach_security_auditlog(ctx) -> None:
+    """The security plugin may create this month's audit index before its policy exists
+    (vm3 Step 10, attachment timing). Adding a policy twice is refused, which is fine."""
+    try:
+        client(ctx).post("/_plugins/_ism/add/security-auditlog-*",
+                         {"policy_id": "security-auditlog-policy"})
+    except HttpError as exc:
+        if exc.status not in (400, 404):
+            raise
+
+
+def zero_replicas(ctx) -> List[str]:
+    """vm3 Step 10: every index with replicas (system indices included) gets 0, through the
+    admin certificate, so a single node stays green."""
+    rows = client(ctx).get("/_cat/indices?h=index,rep&expand_wildcards=all&format=json") or []
+    changed = []
+    adm = admin_cert_client(ctx)
+    for r in rows:
+        if int(r.get("rep") or 0) > 0:
+            adm.put(f"/{r['index']}/_settings", {"index.number_of_replicas": 0})
+            changed.append(r["index"])
+    return changed
 
 
 def _multipart(field: str, filename: str, data: bytes):

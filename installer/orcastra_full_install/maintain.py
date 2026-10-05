@@ -4,7 +4,9 @@ Vault seals itself on every restart and nothing else in the stack notices: the C
 serving the cluster list it read at its own startup, and registration and certificate
 issuance quietly fail. The watchdog unseals Vault with the keys held on this host, then
 restarts the CMP backend so it re-reads the clusters. It also renews the dashboard
-token, which is periodic and would otherwise expire."""
+token, which is periodic and would otherwise expire, and once an hour gives any new
+OpenSearch index with a replica (a plugin's system index) none, so the single node stays
+green (vm3 Step 10)."""
 from __future__ import annotations
 
 import fcntl
@@ -13,12 +15,14 @@ import os
 import time
 from typing import Dict
 
+from . import opensearch_api as OS
 from . import topology as T
 from . import vault_api as V
 from .httpapi import HttpError
 
 RENEW_EVERY = 6 * 3600       # check the token TTL at most every 6 hours
 RENEW_BELOW = 15 * 24 * 3600  # renew when less than 15 days are left of the 30-day period
+REPLICAS_EVERY = 3600
 
 
 def _stamp_path(ctx) -> str:
@@ -42,11 +46,22 @@ def _save_stamps(ctx, data: Dict[str, float]) -> None:
 
 
 def restart_backend(ctx) -> bool:
-    from .phases.p13_cmp import DIR, FILE
+    from .phases.p13_cmp import DIR, FILES
     res = ctx.remote("cmp").run(
-        f"cd {DIR} && docker compose -p {T.COMPOSE_PROJECT} -f {FILE} restart backend",
+        f"cd {DIR} && docker compose -p {T.COMPOSE_PROJECT} -f {FILES} restart backend",
         check=False, timeout=300)
     return res.ok
+
+
+def _zero_replicas(ctx) -> None:
+    """Best effort: an unreachable OpenSearch is reported by `status`, not by the watchdog."""
+    try:
+        if OS.health(ctx).get("unassigned_shards"):
+            fixed = OS.zero_replicas(ctx)
+            if fixed:
+                ctx.log.ok("Set 0 replicas on " + ", ".join(fixed))
+    except (HttpError, OSError) as exc:
+        ctx.log.warn(f"OpenSearch replica check skipped: {exc}")
 
 
 def run(ctx, *, quiet: bool = False, force_renew: bool = False) -> int:
@@ -95,6 +110,10 @@ def run(ctx, *, quiet: bool = False, force_renew: bool = False) -> int:
             except HttpError as exc:
                 ctx.log.error(f"Dashboard token check failed: {exc}")
                 return 1
+        if time.time() - stamps.get("replicas_check", 0) > REPLICAS_EVERY:
+            _zero_replicas(ctx)
+            stamps["replicas_check"] = time.time()
+            _save_stamps(ctx, stamps)
         return 0
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
