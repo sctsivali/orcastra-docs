@@ -1,6 +1,6 @@
 """Phase 12 - verify the deployment end to end (non-destructive)."""
 from ..dockerutil import compose_ps, service_state, http_probe, wait_for
-from ..errors import VerifyError
+from orcastra_core.errors import VerifyError
 
 TITLE = "Verify deployment"
 

@@ -21,7 +21,7 @@ class DockerError(InstallError):
 
 
 class ConfigError(InstallError):
-    """Invalid or incoherent configuration (e.g. SAN vs URL mismatch)."""
+    """Invalid or incoherent configuration (ex; SAN vs URL mismatch)."""
 
 
 class VaultError(InstallError):

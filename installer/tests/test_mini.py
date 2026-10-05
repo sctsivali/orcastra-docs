@@ -12,8 +12,8 @@ sys.path.insert(0, INSTALLER)
 
 from orcastra_mini_install import templates as T          # noqa: E402
 from orcastra_mini_install import _blocks                 # noqa: E402
-from orcastra_mini_install import netutil                 # noqa: E402
-from orcastra_mini_install.state import State             # noqa: E402
+from orcastra_core import netutil                         # noqa: E402
+from orcastra_core.state import State                     # noqa: E402
 from orcastra_mini_install.cli import build_parser, merge_answers, VALUE_DEFAULTS  # noqa: E402
 from orcastra_mini_install.phases import p05_secrets       # noqa: E402
 

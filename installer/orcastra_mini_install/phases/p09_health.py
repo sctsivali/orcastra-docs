@@ -2,7 +2,7 @@
 running. The backend stays unhealthy until phase 10 supplies VAULT_TOKEN, so we do NOT
 wait on it here."""
 from ..dockerutil import compose_ps, service_state, tail_logs, wait_for
-from ..errors import InstallError
+from orcastra_core.errors import InstallError
 
 TITLE = "Wait for data tier"
 

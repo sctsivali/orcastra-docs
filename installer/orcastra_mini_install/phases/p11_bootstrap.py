@@ -11,8 +11,8 @@ import os
 import shutil
 import tempfile
 
-from ..errors import BootstrapError
-from ..fsutil import atomic_write
+from orcastra_core.errors import BootstrapError
+from orcastra_core.fsutil import atomic_write
 from .. import templates
 
 TITLE = "Bootstrap first admin"

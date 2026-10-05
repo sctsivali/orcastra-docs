@@ -2,14 +2,14 @@
 the confirmed host (IP: or DNS:), or install a bring-your-own cert. Reuse a matching cert."""
 import os
 
-from ..errors import ConfigError
-from ..fsutil import ensure_dir, atomic_write
+from orcastra_core.errors import ConfigError
+from orcastra_core.fsutil import ensure_dir, atomic_write
 
 TITLE = "TLS server certificate"
 
 
 def run(ctx):
-    ensure_dir(ctx.nginx_certs_dir)
+    ensure_dir(ctx.nginx_certs_dir, dry_run=ctx.dry_run)
     host = ctx.cfg["host"]
     san = f"{ctx.cfg['san_type']}:{host}"
 

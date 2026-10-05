@@ -14,8 +14,8 @@ import json
 import os
 
 from ..dockerutil import compose_ps, service_state, tail_logs, wait_for
-from ..errors import AbortByUser, VaultError
-from ..fsutil import atomic_write
+from orcastra_core.errors import AbortByUser, VaultError
+from orcastra_core.fsutil import atomic_write
 from .. import templates
 
 TITLE = "Vault init / unseal / PKI"

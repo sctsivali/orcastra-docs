@@ -1,6 +1,6 @@
 """Phase 3 - registry access. Verify the (private) images are pullable; on an auth failure,
 hand the terminal to `docker login` so Docker drives its own device-code prompt, then retry."""
-from ..errors import DockerError
+from orcastra_core.errors import DockerError
 
 TITLE = "Registry access"
 
@@ -41,7 +41,7 @@ def run(ctx):
                               remediation="Run `docker login` (as this user) first, then re-run "
                                           "with --non-interactive.")
         ctx.log.info("Running `docker login` (follow the prompt / device-code URL) ...")
-        rc = ctx.proc.run_interactive(["docker", "login"])
+        rc = ctx.proc.run_interactive(["docker", "login"], stdin=ctx.prompt.tty)
         if rc != 0:
             raise DockerError("docker login failed.",
                               remediation="Re-run and complete the login, or check your account.")

@@ -1,11 +1,18 @@
 """Filesystem helpers: atomic writes with timestamped backups, honoring dry-run."""
+from __future__ import annotations
+
 import os
 import tempfile
 import time
 
 
-def ensure_dir(path: str):
+def ensure_dir(path: str, *, dry_run: bool = False, mode: int = None) -> None:
+    """mkdir -p. A no-op in dry-run so a rehearsal leaves the filesystem untouched."""
+    if dry_run:
+        return
     os.makedirs(path, exist_ok=True)
+    if mode is not None:
+        os.chmod(path, mode)
 
 
 def backup_path(path: str) -> str:
@@ -15,7 +22,7 @@ def backup_path(path: str) -> str:
 def atomic_write(ctx, path: str, content: str, *, mode: int = 0o644, backup: bool = True):
     """Write `content` to `path` atomically (write temp in same dir, then os.replace).
     Backs up an existing target to `<path>.bak.<ts>` first. Returns the backup path or None."""
-    ensure_dir(os.path.dirname(os.path.abspath(path)))
+    ensure_dir(os.path.dirname(os.path.abspath(path)), dry_run=ctx.dry_run)
     bkp = None
     if backup and os.path.exists(path):
         bkp = backup_path(path)
