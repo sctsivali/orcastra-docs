@@ -1,0 +1,49 @@
+name: Installer checks
+
+# Unit tests and docs-parity checks for the Mini and Full installers. Parity matters
+# because both installers deploy config blocks taken from the manual guides.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "installer/**"
+      - "docs/mini/quick-start.md"
+      - "docs/deployment/**"
+      - ".github/workflows/installer.yml"
+  pull_request:
+    paths:
+      - "installer/**"
+      - "docs/mini/quick-start.md"
+      - "docs/deployment/**"
+      - ".github/workflows/installer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        working-directory: installer
+        run: python -m unittest discover -s tests -v
+      - name: Mini template parity
+        run: python installer/tools/check_templates.py
+      - name: Full asset parity
+        run: python installer/tools/check_full_assets.py
+      - name: Bootstrap scripts parse
+        run: bash -n installer/get.sh && bash -n installer/get-full.sh
+      - name: Build both zipapps
+        run: |
+          python installer/tools/build_pyz.py
+          python installer/dist/orcastra-mini-install.pyz --version
+          python installer/dist/orcastra-full-install.pyz --version

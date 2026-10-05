@@ -1,0 +1,261 @@
+# =============================================================================
+# Orcastra Dashboard - Production Docker Compose
+# =============================================================================
+# USE THIS for on-prem deployment (pulls pre-built images from Docker Hub)
+# DO NOT use docker-compose.yml (that's for development/building from source)
+#
+# Production ports:
+#   Frontend: 4321
+#   Backend:  8765
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml down
+#   docker compose -f docker-compose.prod.yml logs -f
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-postgres
+    restart: always
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - orcastra-dashboard
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis Cache
+  redis:
+    image: redis:8-alpine
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6381}:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - orcastra-dashboard
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - redis-data:/data
+
+  # Backend API (port: 8765)
+  backend:
+    image: svlct/orcastra-dashboard:backend-${APP_VERSION:-latest}
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-backend
+    restart: always
+    ports:
+      - "${BACKEND_PORT:-8765}:4050"
+    env_file:
+      - .env
+    environment:
+      - APP_VERSION=${APP_VERSION:-latest}
+      - API_VERSION=${API_VERSION:-latest}
+      - DEBUG=${DEBUG:-false}
+      - DATABASE_URL=${DATABASE_URL}
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTHENTIK_ISSUER=${AUTHENTIK_ISSUER}
+      - AUTHENTIK_AUDIENCE=${AUTHENTIK_CLIENT_ID}
+      - AUTHENTIK_API_URL=${AUTHENTIK_API_URL:-}
+      - AUTHENTIK_API_TOKEN=${AUTHENTIK_API_TOKEN:-}
+      - ORCASTRA_DOMAIN=${ORCASTRA_DOMAIN:-orcastra.io}
+      # Worker count is tunable without a rebuild. Keep at 4 unless an incident calls for it:
+      # fewer workers doubles the blast radius of a single wedged event loop.
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-4}
+      # Incident levers, tunable without a rebuild. Defaults live in
+      # app/services/lxd/proxy.py; set these only to override during an incident.
+      - ORCASTRA_RAW_PROXY_TIMEOUT=${ORCASTRA_RAW_PROXY_TIMEOUT:-20}
+      - ORCASTRA_PROXY_CONNECT_TIMEOUT=${ORCASTRA_PROXY_CONNECT_TIMEOUT:-15}
+      - ORCASTRA_PROXY_POOL_WORKERS=${ORCASTRA_PROXY_POOL_WORKERS:-8}
+      - ORCASTRA_LXD_RETRY_READ=${ORCASTRA_LXD_RETRY_READ:-false}
+    volumes:
+      - ./config:/app/config:rw
+      - /var/orcastra/uploads:/app/uploads:rw
+    networks:
+      - orcastra-dashboard
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    # Resource limits: ensures Dashboard Host shows container resources, not the host
+    # Measured, not guessed: four uvicorn workers sat at 587/524/461/446 MB under QA load,
+    # 2018 MB against a 2g cap, and the kernel OOM-killed two of them. That failure is silent
+    # (RestartCount stays 0, the healthcheck passes, no ERROR line is logged) and shows up
+    # only as dropped requests and severed console sessions. vm4 is specified at 8 GB, so the
+    # backend was simply under-provisioned. Scale this up further as clusters are added:
+    # per-worker memory grows with the number of registered clusters.
+    mem_limit: ${BACKEND_MEM_LIMIT:-4g}
+    cpus: ${BACKEND_CPUS:-2}
+    healthcheck:
+      # Must stay in sync with backend/Dockerfile HEALTHCHECK. Compose wins at runtime, the
+      # Dockerfile value is what a bare `docker run` of the image gets.
+      # The probe carries its own 3s timeout: without one, a hung probe is indistinguishable
+      # from a hung app, which is the same defect class this release fixes in the app itself.
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4050/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    # Gives uvicorn's 20s graceful shutdown room to drain before Docker SIGKILLs it. Without
+    # this, Docker's 10s default cuts live terminal and console sessions on every deploy.
+    stop_grace_period: 30s
+    labels:
+      # Consumed by the autoheal sidecar below. restart:always only reacts to process exit,
+      # and the RC3 outage was a process that stayed alive while serving nothing: the
+      # healthcheck failed 4543 consecutive times with no actor subscribed to the signal.
+      - "autoheal=true"
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp:mode=1777,size=${BACKEND_TMPFS_SIZE:-256m}
+
+  # Frontend (port: 4321)
+  frontend:
+    image: svlct/orcastra-dashboard:frontend-${APP_VERSION:-latest}
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-4321}:2025"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL=${NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL}
+      - FORWARD_CLIENT_IP_HEADERS=${FORWARD_CLIENT_IP_HEADERS:-true}
+      - TRUSTED_CLIENT_IP_HEADERS=${TRUSTED_CLIENT_IP_HEADERS:-cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip}
+      # Internal Docker URL for server-side API proxying (avoids external DNS/firewall issues)
+      - INTERNAL_BACKEND_URL=http://backend:4050
+      # Regions map basemap. Left unset the dashboard draws the outline map bundled with
+      # the image: no outbound request, no API key, works air-gapped. Point MAP_TILE_URL at
+      # an XYZ tile template to use your own provider instead. Runtime only, no rebuild.
+      - MAP_TILE_URL=${MAP_TILE_URL:-}
+      - MAP_TILE_URL_DARK=${MAP_TILE_URL_DARK:-}
+      - MAP_TILE_ATTRIBUTION=${MAP_TILE_ATTRIBUTION:-}
+      - MAP_TILE_ATTRIBUTION_URL=${MAP_TILE_ATTRIBUTION_URL:-}
+      - MAP_TILE_SUBDOMAINS=${MAP_TILE_SUBDOMAINS:-}
+      - MAP_TILE_MAX_ZOOM=${MAP_TILE_MAX_ZOOM:-}
+      - AUTHENTIK_ISSUER=${AUTHENTIK_ISSUER}
+      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
+      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_TRUST_HOST=true
+    networks:
+      - orcastra-dashboard
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Must stay in sync with frontend/Dockerfile HEALTHCHECK. Compose wins at runtime, the
+      # Dockerfile value is what a bare `docker run` of the image gets.
+      # Liveness only: /healthz answers from the process and calls nothing. The probe is Node's
+      # http.get, which never follows a redirect, so a 3xx is a failure that shows in
+      # `docker inspect` rather than a hidden hop. The previous wget --spider of `/` followed the
+      # auth redirect to NEXTAUTH_URL through the public edge, so an edge 502 marked a working
+      # container unhealthy and autoheal (5 s interval, no backoff) restarted it in a loop.
+      # start_period 60s: the entrypoint rewrites `.next` in place before Node listens, and that
+      # has passed 30 s on a loaded VM; a passing probe ends the start period early.
+      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:2025,path:'/healthz',timeout:5000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "autoheal=true"
+
+  # Fluent Bit Log Collector (Sidecar)
+  fluent-bit:
+    image: fluent/fluent-bit:4.2.2-debug
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-fluent-bit
+    restart: always
+    volumes:
+      - ./config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./config/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - ./config/fluent-bit/parse_json.lua:/fluent-bit/etc/parse_json.lua:ro
+      - fluent-bit-data:/fluent-bit/data
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log/containers:/var/log/containers:ro
+    environment:
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST:?OPENSEARCH_HOST is required}
+      - OPENSEARCH_PORT=${OPENSEARCH_PORT:-9200}
+      - OPENSEARCH_USER=${OPENSEARCH_USER:-fluentbit}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:?OPENSEARCH_PASSWORD is required}
+    networks:
+      - orcastra-dashboard
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      # /api/v1/health turns red when HC_Errors_Count or HC_Retry_Failure_Count is exceeded.
+      # Combined with restart:always this surfaces shipping failures to Docker, not just HTTP 200.
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:2020/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Watchdog that restarts containers Docker has marked unhealthy.
+  #
+  # Why this exists: `restart: always` only reacts to a process EXIT. A uvicorn whose event
+  # loops are all blocked stays alive and serves nothing, so it never restarts itself. The
+  # healthcheck detected exactly that and failed 4543 consecutive times with nothing
+  # subscribed to the signal, which is how a fault became a 50 hour outage.
+  #
+  # This is defence in depth, not the fix. The fix is that outbound cluster calls are now
+  # bounded and off the event loop.
+  #
+  # Opt-in by label on purpose, never AUTOHEAL_CONTAINER_LABEL=all. Notably NOT labelled:
+  #   postgres/redis - restarting a datastore on a health blip is worse than the blip
+  #   fluent-bit     - its healthcheck goes red when OpenSearch is unreachable, so labelling
+  #                    it would restart-storm the log shipper through any OpenSearch outage
+  #                    and discard its buffers on each cycle
+  #
+  # Docker's own start_period is the anti-loop guard: during it a container reports `starting`
+  # and never `unhealthy`, so a container that cannot boot is restarted at most once per cycle
+  # rather than in a tight loop.
+  #
+  # note: mounting docker.sock grants this container root-equivalent control of the host.
+  # network_mode: none removes its only exfiltration path, since it talks to the daemon over
+  # a unix socket and needs no network at all.
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-autoheal
+    restart: always
+    network_mode: none
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=${AUTOHEAL_INTERVAL:-5}
+      - AUTOHEAL_START_PERIOD=${AUTOHEAL_START_PERIOD:-120}
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=${AUTOHEAL_DEFAULT_STOP_TIMEOUT:-30}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  orcastra-dashboard:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  fluent-bit-data:

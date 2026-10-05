@@ -1,90 +1,93 @@
-# Orcastra Mini installer
+# Orcastra installers
 
-Automated, end-to-end installer for the Orcastra Mini single-instance deployment. It runs the
-manual [Quick Start](../docs/mini/quick-start.md) sequence for the operator: preflight checks,
-optional Docker install, secret and certificate generation, config files, image pull, Vault
-init/unseal/PKI, the first-admin bootstrap, and a health verification - idempotent on re-run.
+Two automated installers, both Python 3 standard library only (3.8 or newer), each shipped as a
+single-file zipapp:
 
-Python 3 standard library only. No third-party packages.
+| Installer | Deploys | User guide |
+|---|---|---|
+| `orcastra_mini_install` | Orcastra Mini on one Docker host (client-certificate sign-in) | [Mini Automated Install](../docs/mini/automated-install.md) |
+| `orcastra_full_install` | Orcastra CMP Full on an LXD host: Authentik, Vault, OpenSearch and the CMP in four instances | [Automated Install](../docs/deployment/automated-install.md) |
 
 ## Install (end user)
 
 ```bash
+# Mini, on the Docker host
 curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get.sh | bash
+
+# Full, on the LXD host
+curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/get-full.sh | sudo bash
 ```
 
-Pass flags after `--`, e.g. `bash -s -- --host 10.0.0.5 --quick`. Full guide:
-[Automated Install](../docs/mini/automated-install.md).
+Pass flags after `--`, for example `bash -s -- --answers /root/orcastra.env`. Questions are read
+from `/dev/tty`, so both work through the pipe.
 
 ## Layout
 
 ```
-get.sh                      bootstrap: ensure python3, fetch+verify the zipapp, exec it
+get.sh, get-full.sh         bootstrap: ensure python3, fetch the zipapp, verify its sha256, run it
+orcastra_core/              shared by both installers
+  log.py proc.py prompt.py state.py fsutil.py netutil.py errors.py answers.py retry.py
 orcastra_mini_install/
-  cli.py                    flags, answer-file merge, phase dispatch
-  context.py log.py proc.py state.py prompt.py errors.py    shared infrastructure
-  netutil.py dockerutil.py fsutil.py                        helpers
-  templates.py _blocks.py   deployment-file rendering (see "Templates" below)
-  phases/p01..p13, uninstall the install steps
+  cli.py context.py templates.py _blocks.py dockerutil.py
+  phases/p01..p13, uninstall
+orcastra_full_install/
+  cli.py commands.py context.py config.py topology.py      answers, sizing, pins
+  lxd.py remote.py                                         lxc CLI and in-instance execution
+  vault_api.py authentik_api.py opensearch_api.py httpapi.py
+  firewall.py cloudinit.py pki.py compose.py os_render.py cmp_render.py _blocks.py
+  maintain.py status.py verify_infra.py verify_app.py
+  assets/                   files the guides do not contain (release composes, dashboards, ...)
+  phases/p01..p17, uninstall
 tools/
-  gen_blocks.py             regenerate _blocks.py from the published heredocs
-  check_templates.py        CI parity check (templates vs quick-start.md)
-  build_pyz.py              build the single-file zipapp for release
-tests/                      stdlib unittest suite
+  gen_blocks.py, check_templates.py          Mini: blocks from docs/mini/quick-start.md
+  gen_full_blocks.py, check_full_assets.py   Full: blocks from docs/deployment/vm2..vm4
+  build_pyz.py                               build both zipapps
+tests/                      stdlib unittest suite (core, Mini, Full)
 ```
 
-## Phases
+## Docs parity (single source of truth)
 
-`preflight -> docker -> login -> wizard -> secrets -> tls -> write -> compose -> health ->
-vault -> bootstrap -> verify -> summary`. Each is `run(ctx)` and records `done` in
-`install-state.json`, so a re-run skips finished steps. The backend cannot be healthy before
-`vault` (it needs `VAULT_TOKEN`), so `health` gates only the data tier and `vault` waits on the
-backend after writing the token.
+Both installers deploy config blocks taken from the manual guides, so the automated and the
+manual path cannot drift apart.
 
-## Templates (single source of truth)
+- Mini: the heredocs in `docs/mini/quick-start.md` become `orcastra_mini_install/_blocks.py`
+  (`tools/gen_blocks.py`), checked by `tools/check_templates.py`.
+- Full: the heredocs, fenced blocks and OpenSearch `curl -X PUT` bodies in
+  `docs/deployment/vm2..vm4` become `orcastra_full_install/_blocks.py`
+  (`tools/gen_full_blocks.py`). `tools/check_full_assets.py` re-extracts them, checks that
+  every installer-side edit still applies, and lists the files the installer owns outright
+  with the reason.
 
-The deployment files the installer writes (`docker-compose.yml`, `config/nginx/mini.conf`,
-`config/vault/vault.hcl`, and the `.env` skeleton) are extracted verbatim from the published
-heredocs in `docs/mini/quick-start.md` into `orcastra_mini_install/_blocks.py`. This guarantees
-the installer's output matches the manual guide.
-
-- Regenerate after editing the quick-start: `python3 installer/tools/gen_blocks.py`
-- Parity is enforced in CI: `python3 installer/tools/check_templates.py`
-
-`templates.py` only substitutes the image tag and fills `.env` values; it never changes
-structure, ordering, or the documented key set.
+After editing one of those guides, regenerate the module and commit both. CI
+(`.github/workflows/installer.yml`) runs the unit tests and both parity checks on every change
+under `installer/` or the guides.
 
 ## Develop
 
 ```bash
 cd installer
-python3 -m unittest discover -s tests -v      # unit tests
-python3 tools/check_templates.py              # template parity
-python3 -m orcastra_mini_install --dry-run --non-interactive -y \
-  --install-dir /tmp/mini --host 10.0.0.5     # render everything, change nothing
-python3 -m orcastra_mini_install ... --stop-after write   # generate files only
+python3 -m unittest discover -s tests -v
+python3 tools/check_templates.py
+python3 tools/check_full_assets.py
+python3 -m orcastra_full_install --dry-run --non-interactive --admin-email a@example.com   # checks + plan, changes nothing
+python3 -m orcastra_mini_install --dry-run --non-interactive -y --install-dir /tmp/mini --host 10.0.0.5
 ```
 
 ## Build and publish a release
 
-The zipapp and its checksum are distributed as GitHub Release assets (immutable, versioned). The
-one-liner serves `get.sh` from `raw.githubusercontent.com` on `main`, and `get.sh` pins the
-`.pyz` to a release tag and verifies its SHA-256 before running it.
-
 ```bash
-# 1. Build the artifact
-python3 installer/tools/build_pyz.py          # -> installer/dist/orcastra-mini-install.pyz (+ .sha256)
-
-# 2. Cut/refresh the release for the tag get.sh points at (see PYZ_URL in get.sh)
-gh release create installer-v1.0.0-RC1 \
-  installer/dist/orcastra-mini-install.pyz \
-  installer/dist/orcastra-mini-install.pyz.sha256 \
-  installer/get.sh \
-  --prerelease --title "Orcastra Mini installer 1.0.0-RC1" \
-  --notes "Automated installer zipapp + checksum."
+python3 installer/tools/build_pyz.py      # -> installer/dist/orcastra-{mini,full}-install.pyz (+ .sha256)
 ```
 
-For a new installer version, bump the tag in `get.sh` (`PYZ_URL`) and cut a release on that tag;
-the public one-liner never changes. `get.sh` honors `ORCASTRA_INSTALLER_URL` /
-`ORCASTRA_INSTALLER_SHA_URL` / `ORCASTRA_INSTALLER_PYZ` for staging or local use. The `dist/`
-directory is a build artifact and is gitignored.
+Each installer has its own release tag (`installer-v<version>` for Mini,
+`installer-full-v<version>` for Full). `get.sh` / `get-full.sh` point `PYZ_URL` at that tag and
+carry the expected SHA-256 in `PINNED_SHA256`, so a replaced release asset is caught even if its
+`.sha256` neighbour was replaced too. To cut a version: build, set `PYZ_URL` and
+`PINNED_SHA256` in the bootstrap, commit, then `gh release create <tag> <pyz> <pyz>.sha256
+--prerelease`. The public one-liners never change. `ORCASTRA_INSTALLER_URL`,
+`ORCASTRA_INSTALLER_SHA_URL` and `ORCASTRA_INSTALLER_PYZ` point a bootstrap at a staging build
+or a local file. `dist/` is gitignored.
+
+A new CMP release for the Full installer needs its `docker-compose.prod.yml` under
+`orcastra_full_install/assets/cmp/<version>/` and a row in `CMP_COMPOSE_SHA256`
+(`topology.py`). The first row is what `latest` installs.
