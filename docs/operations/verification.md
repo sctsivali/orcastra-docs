@@ -27,7 +27,7 @@ Confirm each VM's services are running:
 === "VM 3 - OpenSearch"
 
     ```bash
-    curl -sk https://localhost:9200 \
+    curl -s --cacert ~/orcastra/certs/root-ca.pem https://localhost:9200 \
       -u admin:<ADMIN_PASSWORD>
     ```
     Should return JSON with `"cluster_name"`, `"status"`, etc.
@@ -145,7 +145,7 @@ curl -s http://localhost:2020/api/v1/metrics | head -20
 ### Check OpenSearch Indices
 
 ```bash
-curl -sk https://<VM3_IP>:9200/_cat/indices?v \
+curl -s --cacert ~/orcastra/certs/root-ca.pem https://localhost:9200/_cat/indices?v \
   -u admin:<ADMIN_PASSWORD> \
   | grep orcastra
 ```

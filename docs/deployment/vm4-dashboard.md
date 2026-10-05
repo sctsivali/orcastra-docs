@@ -274,6 +274,8 @@ lose data rather than features.
           - ./config/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
           - ./config/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
           - ./config/fluent-bit/parse_json.lua:/fluent-bit/etc/parse_json.lua:ro
+          # Public CA of VM 3 (VM 3 Step 5), used to verify OpenSearch's certificate.
+          - ./config/fluent-bit/orcastra-logging-ca.pem:/fluent-bit/etc/orcastra-logging-ca.pem:ro
           - fluent-bit-data:/fluent-bit/data
           - /var/lib/docker/containers:/var/lib/docker/containers:ro
           - /var/log/containers:/var/log/containers:ro
@@ -464,7 +466,8 @@ Create `config/fluent-bit/fluent-bit.conf`:
         HTTP_Passwd       ${OPENSEARCH_PASSWORD}
         Suppress_Type_Name On
         tls               On
-        tls.verify        Off
+        tls.verify        On
+        tls.ca_file       /fluent-bit/etc/orcastra-logging-ca.pem
         net.connect_timeout       10
         net.keepalive             on
         net.keepalive_idle_timeout 30
@@ -488,13 +491,16 @@ Create `config/fluent-bit/fluent-bit.conf`:
         HTTP_Passwd       ${OPENSEARCH_PASSWORD}
         Suppress_Type_Name On
         tls               On
-        tls.verify        Off
+        tls.verify        On
+        tls.ca_file       /fluent-bit/etc/orcastra-logging-ca.pem
         net.connect_timeout       10
         net.keepalive             on
         net.keepalive_idle_timeout 30
         Logstash_Format   On
         Logstash_Prefix   orcastra-audit
-        Logstash_DateFormat %Y.%m.%d
+        # One index per month: audit is kept 3 years, and one index per day would exceed the
+        # single-node shard limit (see VM 3 Step 9).
+        Logstash_DateFormat %Y.%m
         # Audit logs MUST NOT be dropped (compliance), unlimited retries.
         Retry_Limit       no_limits
         Buffer_Size       10MB
@@ -514,7 +520,8 @@ Create `config/fluent-bit/fluent-bit.conf`:
         HTTP_Passwd       ${OPENSEARCH_PASSWORD}
         Suppress_Type_Name On
         tls               On
-        tls.verify        Off
+        tls.verify        On
+        tls.ca_file       /fluent-bit/etc/orcastra-logging-ca.pem
         net.connect_timeout       10
         net.keepalive             on
         net.keepalive_idle_timeout 30
@@ -530,6 +537,18 @@ Create `config/fluent-bit/fluent-bit.conf`:
     ```
 
 ### Parsers Configuration
+
+Create `config/fluent-bit/orcastra-logging-ca.pem` with the content of `certs/root-ca.pem` from
+VM 3 (VM 3 Step 11 prints it). The file must exist before the stack starts: if it is missing,
+Docker creates a directory in its place and Fluent Bit cannot verify OpenSearch.
+
+```bash
+nano config/fluent-bit/orcastra-logging-ca.pem    # paste the certificate, including the BEGIN/END lines
+openssl x509 -in config/fluent-bit/orcastra-logging-ca.pem -noout -subject
+```
+
+The subject should read `CN = Orcastra Logging Root CA`. `OPENSEARCH_HOST` must be the VM 3 address
+in the node certificate (`VM3_PRIVATE_IP`), or verification fails.
 
 Create `config/fluent-bit/parsers.conf`:
 

@@ -78,8 +78,8 @@ path "pki_int/certs"     { capabilities = ["list"] }
 | Browser → Frontend | HTTPS (via Cloudflare Tunnel) | Automatic with domain setup |
 | Frontend → Backend | HTTP (internal Docker network) | Same VM, bridge network |
 | Backend → Vault | HTTP | Internal LXD network |
-| Backend → OpenSearch | HTTPS (self-signed) | TLS verify disabled |
-| Fluent Bit → OpenSearch | HTTPS (self-signed) | TLS verify disabled |
+| Backend → OpenSearch | HTTPS (private CA on VM 3) | Archive feature only; `OPENSEARCH_SSL_VERIFY` defaults to off, and verifying needs the logging CA in the backend's trust store |
+| Fluent Bit → OpenSearch | HTTPS (private CA on VM 3) | Verified against the logging CA (`tls.verify On`, `tls.ca_file`) on VM 2 and VM 4 |
 
 ### At Rest
 

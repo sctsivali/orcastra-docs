@@ -73,13 +73,13 @@ Docker container stdout → /var/lib/docker/containers/*/*.log
 | Source Field | Value | Rewritten Tag | OpenSearch Index |
 |---|---|---|---|
 | `log_type` | `access` | `log.access` | `orcastra-access-YYYY.MM.DD` |
-| `log_type` | `audit` | `log.audit` | `orcastra-audit-YYYY.MM.DD` |
+| `log_type` | `audit` | `log.audit` | `orcastra-audit-YYYY.MM` (monthly) |
 | `level` | any | `log.app` | `orcastra-app-YYYY.MM.DD` |
 | `message` | any (fallback) | `log.app` | `orcastra-app-YYYY.MM.DD` |
 
 ### VM 2 - Vault Log Forwarding
 
-Fluent Bit on VM 2 is installed as a system service (not Docker). It tails the Vault audit log file and forwards each entry to OpenSearch.
+Fluent Bit on VM 2 is installed as a system service (not Docker). It tails the Vault audit log file and forwards each entry to OpenSearch (`vault-audit-YYYY.MM`, one index per month), verifying VM 3's certificate against the logging CA.
 
 ### Reliability and Backpressure
 
@@ -102,64 +102,80 @@ The logging healthcheck is documented as a self-contained helper script in [Oper
 
 ### Index Templates
 
-Three index templates are configured on VM 3 to define field mappings:
+Index templates are configured on VM 3 to define field mappings and settings:
 
 - **`orcastra-access-template`** maps HTTP fields: `method`, `path`, `status_code`, `latency_ms`, `client.ip`, `client.user_agent`
 - **`orcastra-audit-template`** maps audit fields: `action`, `category`, `actor.user_id`, `target.type`, `target.id`, `result`
 - **`vault-audit-template`** maps Vault fields: `type`, `auth.client_token`, `request.operation`, `request.path`
+- **`orcastra-app-template`** and **`security-auditlog-template`** set one shard and no replica
+
+Every template uses one shard and no replica: on a single node a replica can never be assigned.
 
 ### ISM (Index State Management) Policies
 
-Retention runs automatically through four ISM policies created during VM 3 setup
-(see [Step 11](../deployment/vm3-opensearch.md#step-11-create-ism-retention-policies)).
+Retention runs automatically through five ISM policies created during VM 3 setup
+(see [Step 10](../deployment/vm3-opensearch.md#step-10-create-ism-retention-policies)).
 Each policy attaches to new indices through its `ism_template` (matched by index
-pattern) at creation time, so the date-based indices Fluent Bit writes pick up
-their lifecycle with no manual step. States advance by index age (`min_index_age`),
-and every index is snapshotted to the `orcastra-archive` repository before it is
-deleted.
+pattern) at creation time, so the indices Fluent Bit writes pick up their lifecycle
+with no manual step. States advance by index age (`min_index_age`), and every index
+is snapshotted to the `orcastra-archive` repository before it is deleted.
 
-=== "Access Logs (90 days)"
+Short-retention logs use one index per day; the 3-year logs use one index per month. A single
+node allows at most 1000 shards, and one index per day for 3 years would pass that limit in
+the first year and stop ingestion. With this layout the cluster settles at roughly 200 shards.
+
+An index becomes read-only only after the period it covers is over (2 days for a daily index,
+35 days for a monthly one), so late lines buffered by Fluent Bit still land. Monthly indices are
+deleted at retention plus one month, which keeps every document for the full retention period.
+
+=== "Access Logs (90 days, daily)"
 
     ```
-    hot     0-7d       ingesting (also rolls to warm at 50 GB)
-    warm    7-85d      force_merge to 1 segment, read-only
-    archive 85-90d     snapshot to orcastra-archive
+    hot     0-2d       ingesting
+    warm    2-89d      read-only, force_merge to 1 segment
+    archive 89-90d     snapshot to orcastra-archive
     delete  90d+       delete
     ```
 
-=== "Audit Logs (3 years)"
+=== "App Logs (30 days, daily)"
 
     ```
-    hot     0-30d      ingesting (also rolls to warm at 50 GB)
-    warm    30-180d    force_merge to 1 segment, read-only
-    cold    180-1080d  read-only
-    archive 1080-1095d snapshot to orcastra-archive
-    delete  1095d+     delete
-    ```
-
-=== "App Logs (30 days)"
-
-    ```
-    hot     0-7d       ingesting
-    warm    7-25d      force_merge to 1 segment, read-only
-    archive 25-30d     snapshot to orcastra-archive
+    hot     0-2d       ingesting
+    warm    2-29d      read-only, force_merge to 1 segment
+    archive 29-30d     snapshot to orcastra-archive
     delete  30d+       delete
     ```
 
-=== "Vault Audit (3 years)"
+=== "Audit Logs (3 years, monthly)"
 
     ```
-    hot     0-30d      ingesting
-    warm    30-180d    force_merge to 1 segment, read-only
-    cold    180-1080d  read-only
-    archive 1080-1095d snapshot to orcastra-archive
-    delete  1095d+     delete
+    hot     0-35d       ingesting (the month plus a margin)
+    warm    35-1125d    read-only, force_merge to 1 segment
+    archive 1125-1126d  snapshot to orcastra-archive
+    delete  1126d+      delete
     ```
 
-The canonical policy definitions live with the deployment under
-`infrastructure/opensearch/ism-policies/`. Because attachment is by index pattern,
-the policy must exist before the first matching index is created; the deployment
-order applies policies prior to log forwarding.
+=== "Vault Audit (3 years, monthly)"
+
+    ```
+    hot     0-35d       ingesting (the month plus a margin)
+    warm    35-1125d    read-only, force_merge to 1 segment
+    archive 1125-1126d  snapshot to orcastra-archive
+    delete  1126d+      delete
+    ```
+
+=== "Security Audit Log (1 year, monthly)"
+
+    ```
+    hot     0-35d       ingesting (the month plus a margin)
+    warm    35-395d     read-only, force_merge to 1 segment
+    archive 395-396d    snapshot to orcastra-archive
+    delete  396d+       delete
+    ```
+
+The policy definitions are in [VM 3 Step 10](../deployment/vm3-opensearch.md#step-10-create-ism-retention-policies).
+Because attachment is by index pattern, the policy must exist before the first matching index is
+created; the deployment order applies policies before log forwarding starts.
 
 ---
 
