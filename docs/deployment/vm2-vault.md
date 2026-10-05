@@ -38,19 +38,37 @@ nano /etc/vault.d/vault.hcl
 Replace the contents with:
 
 ```hcl
-# HTTP listener (for internal LXD network use)
-listener "tcp" {
-  address     = "0.0.0.0:8200"
-  tls_disable = 1
+ui            = true
+disable_mlock = true
+api_addr      = "http://<VM2_PRIVATE_IP>:8200"
+cluster_addr  = "http://<VM2_PRIVATE_IP>:8201"
+
+# Integrated storage (raft), kept in the directory the package created
+storage "raft" {
+  path    = "/opt/vault/data"
+  node_id = "vm2-vault"
 }
 
-# HTTPS listener (uncomment for production with TLS)
+# HTTP listener (for internal LXD network use)
+listener "tcp" {
+  address         = "0.0.0.0:8200"
+  cluster_address = "0.0.0.0:8201"
+  tls_disable     = 1
+}
+
+# HTTPS listener (use instead of the one above for production with TLS)
 # listener "tcp" {
-#   address       = "0.0.0.0:8200"
-#   tls_cert_file = "/opt/vault/tls/tls.crt"
-#   tls_key_file  = "/opt/vault/tls/tls.key"
+#   address         = "0.0.0.0:8200"
+#   cluster_address = "0.0.0.0:8201"
+#   tls_cert_file   = "/opt/vault/tls/tls.crt"
+#   tls_key_file    = "/opt/vault/tls/tls.key"
 # }
 ```
+
+Replace `<VM2_PRIVATE_IP>` with this VM's private address. Vault refuses to start without a
+`storage` block (`A storage backend must be specified`). Raft keeps the data in
+`/opt/vault/data`, which the package creates and owns as the `vault` user. `disable_mlock`
+is the recommended setting with raft.
 
 !!! warning "TLS Consideration"
     TLS is disabled here because traffic travels over the internal LXD bridge network. For internet-facing deployments, enable TLS.
@@ -93,6 +111,11 @@ vault status
 ```
 
 The output should show `Sealed: false`.
+
+!!! note "A few seconds after unsealing"
+    With raft, a freshly unsealed node needs a few seconds to become the active node. A command
+    that answers `local node not active but active cluster node not found` in that window
+    succeeds when repeated. `vault status` shows `HA Mode active` once it is ready.
 
 ---
 
@@ -200,16 +223,18 @@ vault policy write orcastra-policy /tmp/orcastra-policy.hcl
 vault token create \
   -orphan \
   -policy=orcastra-policy \
-  -ttl=0 \
+  -period=720h \
   -display-name="orcastra-dashboard"
 ```
 
-!!! warning "Use `-ttl=0`, not `-period`"
-    A `-period` token expires (~1 year here) unless something renews it, and the
-    backend has no renew-self logic, so Vault calls start returning `403` long
-    after a successful install. `-orphan -ttl=0` issues a non-expiring token,
-    matching the recovery procedure in
-    [Troubleshooting](../operations/troubleshooting.md).
+!!! warning "No dashboard token stays valid on its own"
+    A non-root token created with `-ttl=0` is not permanent. Vault gives it the default
+    lease of 768h, so it expires after 32 days (`vault token lookup` shows the
+    `expire_time`). The backend never renews its token, so once it expires every Vault call
+    returns `403` and cluster registration and certificate issuance stop. Create a periodic
+    token as above and renew it on a schedule, see
+    [Renew the Dashboard Token](#renew-the-dashboard-token). Each renewal resets the 30-day
+    period, and the token keeps the `default` policy that allows it to renew itself.
 
 ### Verify Dashboard Token Permissions
 
@@ -233,6 +258,27 @@ No value found at secret/metadata/integrations/api_keys
 
 !!! danger "Save the Token"
     The output shows a `token` field starting with `hvs.` - this is your `VAULT_TOKEN` for the Dashboard `.env` on VM 4.
+
+### Renew the Dashboard Token
+
+Once the dashboard `.env` exists on **VM 4** ([Step 6 there](vm4-dashboard.md)), add a daily
+job on VM 4 that renews the token:
+
+```bash
+cat > /etc/cron.daily/orcastra-vault-token-renew << 'RENEW'
+#!/bin/sh
+# Renew the dashboard's periodic Vault token, resetting its 30-day period.
+ENV=/root/orcastra/.env
+VAULT_ADDR=$(grep '^VAULT_ADDR=' "$ENV" | cut -d= -f2-)
+VAULT_TOKEN=$(grep '^VAULT_TOKEN=' "$ENV" | cut -d= -f2-)
+curl -sf -X POST -H "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/auth/token/renew-self" >/dev/null \
+  || logger -t orcastra "Vault dashboard token renewal failed"
+RENEW
+chmod 700 /etc/cron.daily/orcastra-vault-token-renew
+/etc/cron.daily/orcastra-vault-token-renew && echo renewed
+```
+
+The [automated installer](automated-install.md) renews it from the LXD host instead.
 
 ---
 

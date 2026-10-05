@@ -1,6 +1,6 @@
 # Quick Start
 
-A condensed deployment checklist for experienced administrators. For detailed instructions, see the full [Deployment Guide](../deployment/index.md).
+A condensed deployment checklist for experienced administrators. For detailed instructions, see the full [Deployment Guide](../deployment/index.md). On an LXD host, the [automated installer](../deployment/automated-install.md) does all of it in one command.
 
 ## Deployment Checklist
 
@@ -48,6 +48,7 @@ A condensed deployment checklist for experienced administrators. For detailed in
 - [ ] Create `.env` with all values from VMs 1–3
 - [ ] Pull and start containers via `docker compose -f docker-compose.prod.yml up -d`
 - [ ] Configure iptables for Docker→Authentik connectivity (if using LXD)
+- [ ] Add the daily Vault dashboard token renewal job
 - [ ] Verify login and dashboard functionality
 - [ ] *(Optional)* Configure Cloudflare Tunnel for custom domain
 
