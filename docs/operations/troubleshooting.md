@@ -204,11 +204,16 @@ echo "nameserver 8.8.8.8" >> /etc/resolv.conf
 ### Cluster Shows Yellow/Red Status
 
 ```bash
-curl -sk https://localhost:9200/_cluster/health?pretty \
+curl -s --cacert ~/orcastra/certs/root-ca.pem https://localhost:9200/_cluster/health?pretty \
   -u admin:<ADMIN_PASSWORD>
 ```
 
-- **Yellow:** Single-node cluster with replicas configured - expected for single-node deployments.
+- **Yellow:** an index has a replica, which a single node can never assign. It is not harmless:
+  the unassigned replica still counts toward the 1000-shard limit. Find it with
+  `_cat/shards?h=index,prirep,state | grep UNASSIGNED` and set its replicas to 0. For protected
+  system indices such as `.opendistro-ism-config`, use the admin certificate loop in
+  [VM 3 → Keep System Indices Without Replicas](../deployment/vm3-opensearch.md#keep-system-indices-without-replicas).
+  Index templates for every log type set `number_of_replicas: 0`, so new log indices never cause it.
 - **Red:** Shard allocation failures - check disk space and container health.
 
 ### Fluent Bit Cannot Write to OpenSearch
@@ -268,8 +273,15 @@ check_opensearch() {
     fi
 
     local base="https://$host:$port"
-    local health_json status today latest hits
-    health_json=$(curl -sk -u "admin:$pwd" "$base/_cluster/health" || true)
+    # Verify the node certificate against the logging CA (VM 3 Step 5).
+    local ca="${OPENSEARCH_CA:-$HOME/orcastra/certs/root-ca.pem}"
+    local curl_os=(curl -s --cacert "$ca" -u "admin:$pwd")
+    local health_json status latest lag hits
+    if [ ! -r "$ca" ]; then
+        crit "CA certificate $ca not readable (set OPENSEARCH_CA)"
+        return
+    fi
+    health_json=$("${curl_os[@]}" "$base/_cluster/health" || true)
     if [ -z "$health_json" ] || echo "$health_json" | grep -q "Unauthorized"; then
         crit "cannot authenticate to OpenSearch"
         return
@@ -278,24 +290,34 @@ check_opensearch() {
     status=$(echo "$health_json" | grep -o '"status" *: *"[^"]*"' | cut -d'"' -f4)
     case "$status" in
         green) ok "cluster status: green" ;;
-        yellow) warn "cluster status: yellow (expected on single-node with replicas)" ;;
+        yellow) warn "cluster status: yellow (an index has a replica that a single node cannot assign)" ;;
         red) crit "cluster status: red" ;;
         *) crit "cluster status unknown: $status" ;;
     esac
 
-    today=$(date -u +%Y.%m.%d)
-    for prefix in orcastra-access orcastra-audit orcastra-app vault-audit; do
-        latest=$(curl -sk -u "admin:$pwd" "$base/_cat/indices/${prefix}-*?h=index&s=index:desc" | head -1)
+    # Freshness by the newest document, not by index name: audit and Vault indices are monthly.
+    # Vault only logs when Vault is used, so a quiet Vault is a warning, not a failure.
+    local spec prefix max_min
+    for spec in orcastra-access:15 orcastra-audit:15 orcastra-app:15 vault-audit:1440; do
+        prefix="${spec%%:*}"; max_min="${spec#*:}"
+        latest=$("${curl_os[@]}" -H 'Content-Type: application/json' "$base/${prefix}-*/_search?size=0" \
+            -d '{"aggs":{"m":{"max":{"field":"@timestamp"}}}}' \
+            | grep -o '"value_as_string" *: *"[^"]*"' | cut -d'"' -f4)
         if [ -z "$latest" ]; then
-            crit "no indices found for $prefix-*"
-        elif [[ "$latest" == *"$today"* ]]; then
-            ok "$prefix has today's index ($latest)"
+            crit "no documents found in $prefix-*"
+            continue
+        fi
+        lag=$(( ( $(date -u +%s) - $(date -u -d "$latest" +%s) ) / 60 ))
+        if (( lag <= max_min )); then
+            ok "$prefix newest document ${lag}m ago"
+        elif [ "$prefix" = vault-audit ]; then
+            warn "$prefix newest document ${lag}m ago (quiet Vault, or the VM 2 forwarder stopped)"
         else
-            crit "$prefix latest index is $latest - ingestion stalled"
+            crit "$prefix newest document ${lag}m ago - ingestion stalled"
         fi
     done
 
-    hits=$(curl -sk -u "admin:$pwd" -H 'Content-Type: application/json' \
+    hits=$("${curl_os[@]}" -H 'Content-Type: application/json' \
         "$base/orcastra-*/_count" \
         -d '{"query":{"range":{"@timestamp":{"gte":"now-5m"}}}}' \
         | grep -o '"count" *: *[0-9]*' | awk -F: '{print $2}' | tr -d ' ')
@@ -326,7 +348,7 @@ chmod +x /usr/local/bin/orcastra-logging-healthcheck
 orcastra-logging-healthcheck fluentbit
 
 # On VM 3 (OpenSearch side)
-OPENSEARCH_ADMIN_PASSWORD=... orcastra-logging-healthcheck opensearch
+OPENSEARCH_ADMIN_PASSWORD=... OPENSEARCH_CA=~/orcastra/certs/root-ca.pem orcastra-logging-healthcheck opensearch
 ```
 
 Exit codes: `0` healthy, `1` warning, `2` critical. The script reports auth
@@ -343,7 +365,7 @@ Bit retry counters.
 3. Verify `OPENSEARCH_PASSWORD` matches the `fluentbit` user password set on VM 3
 4. Check OpenSearch is accepting connections:
    ```bash
-   curl -sk https://<VM3_IP>:9200 -u fluentbit:<PASSWORD>
+   curl -s --cacert config/fluent-bit/orcastra-logging-ca.pem https://<VM3_IP>:9200 -u fluentbit:<PASSWORD>
    ```
 
 #### Symptom: `Authentication finally failed for fluentbit from <VM4_IP>` in OpenSearch logs
@@ -359,7 +381,7 @@ once `Retry_Limit` is reached, so dashboards stop updating without an error.
 # docker exec orcastra-dashboard-fluent-bit env | grep OPENSEARCH_PASSWORD
 
 # Reset the OpenSearch user to match
-curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u admin:$OPENSEARCH_ADMIN_PASSWORD \
   -X PUT "https://localhost:9200/_plugins/_security/api/internalusers/fluentbit" \
   -H "Content-Type: application/json" \
   -d '{
@@ -369,7 +391,7 @@ curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
   }'
 
 # Verify
-curl -sk -u "fluentbit:<PWD_FROM_VM4>" https://localhost:9200/_cluster/health?pretty
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u "fluentbit:<PWD_FROM_VM4>" https://localhost:9200/_cluster/health?pretty
 ```
 
 If you want to automate this check, keep the helper file above on both VMs and
@@ -396,9 +418,9 @@ existing index whose pattern the role clearly covers.
 **Confirm (run on VM 3):**
 
 ```bash
-curl -sk -u "fluentbit:<FB_PW>" "https://localhost:9200/_plugins/_security/authinfo?pretty"  # roles: ["log_writer"]
-curl -sk -u "fluentbit:<FB_PW>" "https://localhost:9200/vault-audit-*/_count"                 # read works -> 200
-curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u "fluentbit:<FB_PW>" "https://localhost:9200/_plugins/_security/authinfo?pretty"  # roles: ["log_writer"]
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u "fluentbit:<FB_PW>" "https://localhost:9200/vault-audit-*/_count"                 # read works -> 200
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u admin:$OPENSEARCH_ADMIN_PASSWORD \
   "https://localhost:9200/_plugins/_security/api/roles/log_writer?pretty" | grep -A6 cluster_permissions
 ```
 
@@ -407,7 +429,7 @@ If `cluster_permissions` has no `cluster_composite_ops`, that is the cause.
 **Fix (run on VM 3):**
 
 ```bash
-curl -sk -u admin:$OPENSEARCH_ADMIN_PASSWORD \
+curl -s --cacert ~/orcastra/certs/root-ca.pem -u admin:$OPENSEARCH_ADMIN_PASSWORD \
   -X PATCH "https://localhost:9200/_plugins/_security/api/roles/log_writer" \
   -H "Content-Type: application/json" \
   -d '[{"op":"add","path":"/cluster_permissions/-","value":"cluster_composite_ops"}]'
@@ -419,7 +441,7 @@ security-config reload. Verify:
 
 ```bash
 printf '%s\n%s\n' '{"index":{}}' '{"@timestamp":"2026-01-01T00:00:00Z","msg":"ok"}' \
-| curl -sk -u "fluentbit:<FB_PW>" -X POST \
+| curl -s --cacert ~/orcastra/certs/root-ca.pem -u "fluentbit:<FB_PW>" -X POST \
     "https://localhost:9200/vault-audit-test/_bulk" \
     -H "Content-Type: application/x-ndjson" --data-binary @- -w '\n%{http_code}\n'
 # Expect 200 with items[].status 201

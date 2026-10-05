@@ -4,6 +4,10 @@
 
 OpenSearch provides centralized log aggregation and analytics dashboards for the Orcastra platform. It receives logs from Vault (VM 2) and the Dashboard (VM 4) via Fluent Bit.
 
+This guide produces a hardened single-node cluster: TLS with certificates from your own CA (never
+the OpenSearch demo certificates), an index layout that stays within the single-node shard limit
+for the full retention period, automatic retention, and optional sign-in through Authentik.
+
 ---
 
 ## Prerequisites
@@ -29,7 +33,7 @@ Follow the [common Docker installation](index.md#common-docker-installation) ste
 
 ## Step 2: Generate Passwords
 
-Work from a dedicated deployment directory so the compose file, `.env`, and Docker named volumes stay together in one predictable place. This keeps upgrades and troubleshooting straightforward instead of hunting for files scattered across the home or `/root` directory:
+Work from a dedicated deployment directory so the compose file, `.env`, certificates, and Docker named volumes stay together in one predictable place. This keeps upgrades and troubleshooting straightforward instead of hunting for files scattered across the home or `/root` directory:
 
 ```bash
 mkdir -p ~/orcastra && cd ~/orcastra
@@ -38,26 +42,34 @@ mkdir -p ~/orcastra && cd ~/orcastra
 Run the remaining steps from `~/orcastra`. Then generate the OpenSearch passwords:
 
 ```bash
-OPENSEARCH_PASS="$(openssl rand -base64 24)"
+OPENSEARCH_PASS="$(openssl rand -base64 33 | tr -d '/+=' | cut -c1-32)"
 echo "OpenSearch admin password: $OPENSEARCH_PASS"
 ```
 
 ```bash
-DASHBOARDS_PASS="$(openssl rand -base64 16)"
+DASHBOARDS_PASS="$(openssl rand -base64 33 | tr -d '/+=' | cut -c1-32)"
 echo "Dashboards (kibanaserver) password: $DASHBOARDS_PASS"
 ```
 
 !!! danger "Save Both Passwords"
-    - **OpenSearch admin password** used for all admin API calls
+    - **OpenSearch admin password** used for all admin API calls, and the break-glass sign-in
     - **Dashboards password** used by OpenSearch Dashboards internally
 
-Create the `.env` file:
+Set the two addresses this VM is reached by, then create the `.env` file:
+
+- `VM3_PRIVATE_IP`: the private IP VM 2 and VM 4 use to reach this VM
+- `LOGS_DOMAIN`: the public hostname of OpenSearch Dashboards (see [Domain Setup](../operations/domain-setup.md)), for example `logs.example.com`
 
 ```bash
+VM3_PRIVATE_IP="<VM3_PRIVATE_IP>"
+LOGS_DOMAIN="<LOGS_DOMAIN>"
+
 cat > .env << EOF
 OPENSEARCH_ADMIN_PASSWORD=$OPENSEARCH_PASS
 OPENSEARCH_DASHBOARDS_PASSWORD=$DASHBOARDS_PASS
 ARCHIVE_DIR=/opt/opensearch/archive
+VM3_PRIVATE_IP=$VM3_PRIVATE_IP
+LOGS_DOMAIN=$LOGS_DOMAIN
 EOF
 
 chmod 600 .env
@@ -86,34 +98,105 @@ systemctl restart docker
 ## Step 4: Prepare Directories
 
 ```bash
-mkdir -p opensearch-data config
-chmod 777 opensearch-data
+mkdir -p config certs
 
-# Snapshot archive directory
+# Snapshot archive directory (owned by the opensearch user inside the container, uid 1000)
 ARCHIVE_DIR="/opt/opensearch/archive"
 mkdir -p "$ARCHIVE_DIR"
-chmod 777 "$ARCHIVE_DIR"
+chown 1000:1000 "$ARCHIVE_DIR"
+chmod 750 "$ARCHIVE_DIR"
 ```
 
 ---
 
-## Step 5: Create Docker Compose
+## Step 5: Generate TLS Certificates
+
+OpenSearch encrypts both its REST API and node transport with TLS. Create a private certificate
+authority and issue the node certificate and the security admin certificate from it.
+
+!!! danger "Never use the OpenSearch demo certificates"
+    The OpenSearch image can install demo certificates on first start. Their private keys,
+    including the demo admin certificate (`CN=kirk`), are published with OpenSearch: anyone who
+    can reach port 9200 or 9300 can use them to take over the security configuration. This guide
+    disables the demo installer and uses only the certificates created here.
+
+```bash
+cd ~/orcastra/certs
+set -a; . ../.env; set +a
+
+# 1. Certificate authority (10 years)
+openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out root-ca-key.pem
+openssl req -x509 -new -key root-ca-key.pem -sha256 -days 3650 -out root-ca.pem \
+  -subj "/O=Orcastra/OU=logging/CN=Orcastra Logging Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
+
+# 2. Node certificate (825 days). The SANs are every name clients use to reach OpenSearch.
+openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out node-key.pem
+openssl req -new -key node-key.pem -subj "/O=Orcastra/OU=logging/CN=opensearch-node1" -out node.csr
+cat > node.ext << EOF
+basicConstraints=CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth,clientAuth
+subjectAltName=DNS:opensearch,DNS:localhost,DNS:${LOGS_DOMAIN},IP:127.0.0.1,IP:${VM3_PRIVATE_IP}
+EOF
+openssl x509 -req -in node.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial \
+  -sha256 -days 825 -extfile node.ext -out node.pem
+
+# 3. Security admin certificate (used only by securityadmin.sh, never mounted into the node)
+openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out admin-key.pem
+openssl req -new -key admin-key.pem -subj "/O=Orcastra/OU=logging/CN=orcastra-logging-admin" -out admin.csr
+printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n' > admin.ext
+openssl x509 -req -in admin.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial \
+  -sha256 -days 825 -extfile admin.ext -out admin.pem
+
+rm -f node.csr admin.csr node.ext admin.ext
+openssl verify -CAfile root-ca.pem node.pem admin.pem
+
+# The container user (uid 1000) reads only the node certificate, its key and the CA.
+chown 1000:1000 node.pem node-key.pem
+chmod 600 node-key.pem admin-key.pem root-ca-key.pem
+chmod 644 root-ca.pem node.pem admin.pem
+cd ~/orcastra
+```
+
+Both `node.pem` and `admin.pem` should report `OK`.
+
+!!! info "Why the public hostname is in the node certificate"
+    The OpenSearch Dashboards security plugin forwards the browser's `Host` header on some of its
+    own calls to OpenSearch, so those calls verify the node certificate against `LOGS_DOMAIN`.
+    Without that SAN, Dashboards logs `ERR_TLS_CERT_ALTNAME_INVALID` and its read-only tenant check
+    fails.
+
+!!! danger "Back up the CA key"
+    Copy `certs/root-ca-key.pem` to offline storage. Without it, renewing a certificate means
+    creating a new CA and redistributing it to every client. Renew the node and admin
+    certificates before they expire (825 days) by repeating parts 2 and 3 with the existing CA.
+
+`certs/root-ca.pem` is public: VM 2 and VM 4 use it to verify this server.
+
+---
+
+## Step 6: Create Docker Compose
 
 ```bash
 cat > docker-compose.yml << 'EOF'
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   opensearch:
     image: opensearchproject/opensearch:3.5.0
     container_name: opensearch
     restart: always
     environment:
-      - cluster.name=orcastra-logging
-      - node.name=opensearch-node1
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
       - "OPENSEARCH_JAVA_OPTS=-Xms4g -Xmx4g"
-      - plugins.security.disabled=false
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD:?OPENSEARCH_ADMIN_PASSWORD is required}
+      - bootstrap.memory_lock=true
+      # Never install the demo certificates or demo users.
+      - DISABLE_INSTALL_DEMO_CONFIG=true
     ulimits:
       memlock:
         soft: -1
@@ -128,41 +211,49 @@ services:
       - ./config/internal_users.yml:/usr/share/opensearch/config/opensearch-security/internal_users.yml:ro
       - ./config/roles.yml:/usr/share/opensearch/config/opensearch-security/roles.yml:ro
       - ./config/roles_mapping.yml:/usr/share/opensearch/config/opensearch-security/roles_mapping.yml:ro
+      - ./certs/node.pem:/usr/share/opensearch/config/certs/node.pem:ro
+      - ./certs/node-key.pem:/usr/share/opensearch/config/certs/node-key.pem:ro
+      - ./certs/root-ca.pem:/usr/share/opensearch/config/certs/root-ca.pem:ro
     ports:
+      # REST API for Fluent Bit on VM 2 / VM 4. 9300 (node transport) is not published: a single
+      # node has no peers, and an open transport port is attack surface only.
       - "9200:9200"
-      - "9300:9300"
     networks:
       - opensearch-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -k https://localhost:9200 -u admin:${OPENSEARCH_ADMIN_PASSWORD} | grep -q 'opensearch'"]
+      # 200 or 401 proves the TLS API is serving, without putting a password in the container config.
+      test: ["CMD-SHELL", "code=$$(curl -s -o /dev/null -w '%{http_code}' --cacert config/certs/root-ca.pem https://localhost:9200/); [ \"$$code\" = 200 ] || [ \"$$code\" = 401 ]"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
+    logging: *logging
 
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:3.5.0
     container_name: opensearch-dashboards
     restart: always
-    environment:
-      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
-      - OPENSEARCH_DASHBOARDS_PASSWORD=${OPENSEARCH_DASHBOARDS_PASSWORD}
     volumes:
       - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
+      # Secrets (kibanaserver password, and later the SSO client secret) live in the keystore (Step 7).
+      - ./config/opensearch_dashboards.keystore:/usr/share/opensearch-dashboards/config/opensearch_dashboards.keystore:ro
+      - ./certs/root-ca.pem:/usr/share/opensearch-dashboards/config/certs/root-ca.pem:ro
     ports:
-      - "5601:5601"
+      # Private network only: the Cloudflare tunnel connector (VM 4) reaches Dashboards here.
+      - "${VM3_PRIVATE_IP:?set VM3_PRIVATE_IP in .env}:5601:5601"
+      - "127.0.0.1:5601:5601"
     networks:
       - opensearch-net
     depends_on:
       opensearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -E -q '(available|Unauthorized)'"]
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:5601/api/status | grep -qE '^(200|401)$'"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
+    logging: *logging
 
 networks:
   opensearch-net:
@@ -182,7 +273,7 @@ EOF
 
 ---
 
-## Step 6: Create Configuration Files
+## Step 7: Create Configuration Files
 
 ### OpenSearch Configuration
 
@@ -196,24 +287,30 @@ http.port: 9200
 
 discovery.type: single-node
 
-# Security - TLS
-plugins.security.ssl.transport.pemcert_filepath: esnode.pem
-plugins.security.ssl.transport.pemkey_filepath: esnode-key.pem
-plugins.security.ssl.transport.pemtrustedcas_filepath: root-ca.pem
+# Security - TLS (certificates from Step 5)
+plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
+plugins.security.ssl.transport.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
 plugins.security.ssl.transport.enforce_hostname_verification: false
 plugins.security.ssl.http.enabled: true
-plugins.security.ssl.http.pemcert_filepath: esnode.pem
-plugins.security.ssl.http.pemkey_filepath: esnode-key.pem
-plugins.security.ssl.http.pemtrustedcas_filepath: root-ca.pem
-plugins.security.allow_unsafe_democertificates: true
+plugins.security.ssl.http.pemcert_filepath: certs/node.pem
+plugins.security.ssl.http.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.allow_unsafe_democertificates: false
+# The first start initializes the security index from the files mounted in Step 6.
 plugins.security.allow_default_init_securityindex: true
 
-# Security - Admin DN
+# Security - node and admin identities (certificates from Step 5)
+plugins.security.nodes_dn:
+  - "CN=opensearch-node1,OU=logging,O=Orcastra"
 plugins.security.authcz.admin_dn:
-  - CN=kirk,OU=client,O=client,L=test,C=de
+  - "CN=orcastra-logging-admin,OU=logging,O=Orcastra"
 
 # Security - Features
 plugins.security.audit.type: internal_opensearch
+# One security audit index per month (the default is one per day, which alone adds about 365
+# shards a year to a single node).
+plugins.security.audit.config.index: "'security-auditlog-'YYYY.MM"
 plugins.security.enable_snapshot_restore_privilege: true
 plugins.security.check_snapshot_restore_write_privileges: true
 plugins.security.restapi.roles_enabled: ["all_access", "security_rest_api_access"]
@@ -235,9 +332,6 @@ path.repo: ["/usr/share/opensearch/snapshots"]
 
 # Index settings
 action.auto_create_index: true
-
-# Compatibility (clients that probe the main response version)
-compatibility.override_main_response_version: true
 EOF
 ```
 
@@ -256,7 +350,7 @@ EOF
 
     ```bash
     # Option 1: Using OpenSearch container
-    docker run -it opensearchproject/opensearch:3.5.0 bash -c \
+    docker run -it --rm opensearchproject/opensearch:3.5.0 bash -c \
       "plugins/opensearch-security/tools/hash.sh -p 'YOUR_PASSWORD'"
 
     # Option 2: Using Python
@@ -268,10 +362,10 @@ EOF
 
     - `OPENSEARCH_ADMIN_PASSWORD`
     - `AUDIT_VIEWER_PASSWORD`
-    - `KIBANASERVER_PASSWORD`
+    - `KIBANASERVER_PASSWORD` (the Dashboards password from Step 2)
 
     (`FLUENTBIT_PASSWORD` is **not** hashed here - the `fluentbit` user is created
-    via the Security API in Step 8; its plaintext password lives in `.env` and is
+    via the Security API in Step 11; its plaintext password lives in `.env` and is
     pushed to VM 2 / VM 4.)
 
 ```bash
@@ -286,10 +380,10 @@ admin:
   reserved: true
   backend_roles:
     - "admin"
-  description: "Admin user for Orcastra logging"
+  description: "Admin user for Orcastra logging (break-glass sign-in)"
 
 # `fluentbit` is intentionally NOT defined here, it is created via the Security
-# API in Step 8. Seeding it here too would re-apply a placeholder hash on any
+# API in Step 11. Seeding it here too would re-apply a placeholder hash on any
 # security-config reload and break log shipping (401). Keep it API-managed only.
 
 audit_viewer:
@@ -319,7 +413,7 @@ EOF
 
     If a placeholder is left, OpenSearch stores the literal string as that user's
     credential, `admin`/`audit_viewer`/`kibanaserver` can never authenticate and
-    Steps 7-10 fail with `401`. (`fluentbit` is (re)created via the API in Step 8,
+    Steps 8-12 fail with `401`. (`fluentbit` is (re)created via the API in Step 11,
     so only it survives a missed substitution.)
 
 ### Roles
@@ -375,6 +469,11 @@ audit_admin:
         - "vault-*"
       allowed_actions:
         - "all"
+
+# Marker role for read-only Dashboards users (opensearch_security.readonly_mode.roles).
+# It grants nothing by itself; see Step 13.
+logs_readonly_ui:
+  reserved: false
 EOF
 ```
 
@@ -435,48 +534,66 @@ cat > config/opensearch_dashboards.yml << 'EOF'
 server.host: "0.0.0.0"
 server.port: 5601
 server.name: "orcastra-dashboards"
+server.customResponseHeaders:
+  X-Content-Type-Options: "nosniff"
+  X-Frame-Options: "SAMEORIGIN"
+  Referrer-Policy: "strict-origin-when-cross-origin"
 
 opensearch.hosts: ["https://opensearch:9200"]
-opensearch.ssl.verificationMode: none
-opensearch.username: "${OPENSEARCH_DASHBOARDS_USER:-kibanaserver}"
-opensearch.password: "${OPENSEARCH_DASHBOARDS_PASSWORD:?OPENSEARCH_DASHBOARDS_PASSWORD is required}"
+# Verify the node certificate against the CA from Step 5 (hostname included).
+opensearch.ssl.verificationMode: full
+opensearch.ssl.certificateAuthorities: ["/usr/share/opensearch-dashboards/config/certs/root-ca.pem"]
+opensearch.username: "kibanaserver"
+# opensearch.password comes from the keystore below, never from this file.
 opensearch.requestHeadersAllowlist: ["authorization", "securitytenant"]
 
 opensearch_security.multitenancy.enabled: true
-opensearch_security.multitenancy.tenants.preferred: ["Private", "Global"]
-opensearch_security.readonly_mode.roles: ["kibana_read_only"]
-opensearch_security.cookie.secure: false
+# Global first: dashboards imported in Step 12 land in the tenant every user sees.
+opensearch_security.multitenancy.tenants.preferred: ["Global", "Private"]
+opensearch_security.readonly_mode.roles: ["logs_readonly_ui"]
+opensearch_security.cookie.secure: true
 
 logging.dest: stdout
-logging.silent: false
-logging.quiet: false
-logging.verbose: false
+logging.quiet: true
 EOF
 ```
 
+Store the `kibanaserver` password in the Dashboards keystore. The password goes in over stdin, so
+it never appears in a file, the process list or the container environment:
+
+```bash
+set -a; . ./.env; set +a
+tmp="$(mktemp -d)"; chown 1000:1000 "$tmp"     # Dashboards runs as uid 1000
+docker run --rm -i -v "$tmp:/out" --entrypoint bash opensearchproject/opensearch-dashboards:3.5.0 -c '
+  set -e; read -r pw
+  bin/opensearch-dashboards-keystore create --silent >/dev/null
+  printf %s "$pw" | bin/opensearch-dashboards-keystore add --stdin --silent opensearch.password
+  cp config/opensearch_dashboards.keystore /out/' <<< "$OPENSEARCH_DASHBOARDS_PASSWORD"
+install -o 1000 -g 1000 -m 600 "$tmp/opensearch_dashboards.keystore" config/
+rm -rf "$tmp"
+```
+
 !!! note "`cookie.secure` and HTTPS"
-    `opensearch_security.cookie.secure` is `false` because Dashboards is served over plain
-    HTTP on port 5601 (typically reached across the private Tailscale/WireGuard mesh, which
-    already encrypts the transport). With `true`, the browser withholds the session cookie
-    over HTTP and login loops. Once Dashboards sits behind an HTTPS reverse proxy or tunnel,
-    set it to `true`.
+    `opensearch_security.cookie.secure` is `true`: browsers then send the session cookie only over
+    HTTPS, which is how users reach Dashboards through the tunnel in
+    [Domain Setup](../operations/domain-setup.md). Before the tunnel exists, use an SSH tunnel and
+    open `http://localhost:5601` (browsers treat `localhost` as a secure context):
+
+    ```bash
+    ssh -L 5601:127.0.0.1:5601 root@<VM3_PRIVATE_IP>
+    ```
+
+    Opening `http://<VM3_PRIVATE_IP>:5601` directly makes the login loop, because the browser
+    withholds the secure cookie over plain HTTP.
+
 
 ---
 
-## Step 7: Start OpenSearch
+## Step 8: Start OpenSearch
 
 ```bash
 docker compose up -d
 ```
-
-??? tip "Startup Error: dependency failed"
-    If you see `Container opensearch Error dependency opensearch failed to start`:
-
-    ```bash
-    sed -i 's/compatibility.override_main_response_version: true/# compatibility.override_main_response_version: true/g' config/opensearch.yml
-    docker compose down
-    docker compose up -d
-    ```
 
 Verify both containers are healthy:
 
@@ -484,95 +601,36 @@ Verify both containers are healthy:
 docker compose ps
 ```
 
-Both should show `healthy` status after approximately 60 seconds.
+Both should show `healthy` status after approximately 90 seconds. Then check that the node serves
+your certificate and accepts the admin password:
+
+```bash
+OS="curl -s --cacert certs/root-ca.pem -u admin:$OPENSEARCH_PASS https://localhost:9200"
+$OS/_cluster/health | python3 -m json.tool | grep status
+echo | openssl s_client -connect localhost:9200 -CAfile certs/root-ca.pem -verify_return_error 2>/dev/null | grep "Verify return code"
+```
+
+Expect `"status": "green"` and `Verify return code: 0 (ok)`. The commands in the remaining steps
+use `$OS`; if you open a new shell, set it again (and `OPENSEARCH_PASS` from `.env`).
 
 ---
 
-## Step 8: Create Fluent Bit User
+## Step 9: Create Index Templates
 
-Generate a password for the Fluent Bit service account:
+Index templates and the Vault ingest pipeline must exist before the first log arrives: an index
+created without its template keeps the wrong mapping until it is deleted. VM 2 may already be
+buffering Vault audit logs, which is why the Fluent Bit account is only created in Step 11.
 
-```bash
-FLUENTBIT_PASS="$(openssl rand -hex 16)"
-echo "Fluent Bit password: $FLUENTBIT_PASS"
-echo "FLUENTBIT_PASSWORD=$FLUENTBIT_PASS" >> .env
-```
-
-!!! danger "Save This Password"
-    The Fluent Bit password is required on both **VM 2** (Vault audit forwarding) and **VM 4** (Dashboard log forwarding).
-
-Wait for OpenSearch to be ready, then create the user:
-
-```bash
-until curl -sk -u "admin:$OPENSEARCH_PASS" \
-  https://localhost:9200/_cluster/health 2>/dev/null | grep -q status; do
-  echo "Waiting for OpenSearch..." && sleep 5
-done
-
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_plugins/_security/api/internalusers/fluentbit" \
-  -H "Content-Type: application/json" \
-  -d "{\"password\":\"$FLUENTBIT_PASS\",\"backend_roles\":[\"log_writer\"]}"
-```
-
----
-
-## Step 9: Import Dashboard Templates
-
-### Install Git and Create Script
-
-```bash
-apt update && apt install git -y
-```
-
-Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
-
-- **Orcastra Logs Overview**, combined view of all log types
-- **Orcastra Access Logs**, HTTP request monitoring and latency tracking
-- **Orcastra Activity & Audit Logs**, security compliance and user activity
-- **Vault Security Audit**, vault operations and secret access patterns
-
-!!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-cmp repository](https://github.com/sctsivali/orcastra-cmp) under `config/opensearch-dashboards/`, or copy them from your deployment package.
-
-Place the following files in `config/opensearch-dashboards/`:
-
-- `access-logs-dashboard-v3.ndjson`
-- `audit-logs-dashboard-v3.ndjson`
-- `logs-overview-dashboard.ndjson`
-- `vault-audit-dashboard.ndjson`
-
-Run the import:
-
-```bash
-chmod +x setup_opensearch_dashboards.sh
-./setup_opensearch_dashboards.sh \
-  --url http://localhost:5601 \
-  --password "$OPENSEARCH_PASS" \
-  --dashboard-dir config/opensearch-dashboards
-```
-
-!!! tip "Password Variable Issue"
-    If you see `[ERROR] Admin password is required`, use the literal password instead:
-
-    ```bash
-    ./setup_opensearch_dashboards.sh \
-      --url http://localhost:5601 \
-      --password "your-actual-password" \
-      --dashboard-dir config/opensearch-dashboards
-    ```
-
----
-
-## Step 10: Create Index Templates
-
-Index templates must be created before logs start flowing into the indices.
+!!! info "Index layout: daily for short retention, monthly for long retention"
+    A single node allows at most 1000 shards. Access (90 days) and app logs (30 days) use one
+    index per day; audit and Vault audit logs, kept for 3 years, use one index per month. With
+    retention in place the cluster settles at roughly 200 shards. One index per day for the
+    3-year logs would exceed the limit within the first year and stop all ingestion.
 
 ### Vault Audit Ingest Pipeline
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_ingest/pipeline/vault-audit-parse" \
+$OS/_ingest/pipeline/vault-audit-parse -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "description": "Parse Vault audit log JSON into structured fields",
@@ -593,7 +651,15 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
     },
     {
       "remove": {
-        "field": ["_parsed", "log"],
+        "description": "Drop the raw line only once it was parsed; a line that is not JSON keeps it",
+        "field": "log",
+        "if": "ctx._parsed instanceof Map",
+        "ignore_missing": true
+      }
+    },
+    {
+      "remove": {
+        "field": "_parsed",
         "ignore_missing": true
       }
     }
@@ -606,8 +672,7 @@ Should return `{"acknowledged":true}`.
 ### Vault Audit Index Template
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_index_template/vault-audit-template" \
+$OS/_index_template/vault-audit-template -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "index_patterns": ["vault-audit-*"],
@@ -673,8 +738,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 ### Orcastra Audit Index Template
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_index_template/orcastra-audit-template" \
+$OS/_index_template/orcastra-audit-template -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "index_patterns": ["orcastra-audit-*"],
@@ -746,8 +810,7 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 ### Orcastra Access Index Template
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_index_template/orcastra-access-template" \
+$OS/_index_template/orcastra-access-template -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "index_patterns": ["orcastra-access-*"],
@@ -809,42 +872,80 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 }'
 ```
 
+### Orcastra App and Security Audit Index Templates
+
+These two have no fixed mapping, but they must not get the default replica: on a single node a
+replica can never be assigned, so the cluster turns yellow and the shard count doubles.
+
+```bash
+$OS/_index_template/orcastra-app-template -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{
+  "index_patterns": ["orcastra-app-*"],
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": { "properties": { "@timestamp": { "type": "date" } } }
+  },
+  "priority": 100,
+  "version": 1
+}'
+
+$OS/_index_template/security-auditlog-template -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{
+  "index_patterns": ["security-auditlog-*"],
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+  },
+  "priority": 100,
+  "version": 1
+}'
+```
+
 ### Verify Templates
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" \
-  "https://localhost:9200/_ingest/pipeline/vault-audit-parse" \
-  | python3 -m json.tool | head -5
-
-curl -sk -u "admin:$OPENSEARCH_PASS" \
-  "https://localhost:9200/_index_template/vault-audit-template" \
-  | python3 -m json.tool | head -5
-
-curl -sk -u "admin:$OPENSEARCH_PASS" \
-  "https://localhost:9200/_index_template/orcastra-audit-template" \
-  | python3 -m json.tool | head -5
-
-curl -sk -u "admin:$OPENSEARCH_PASS" \
-  "https://localhost:9200/_index_template/orcastra-access-template" \
-  | python3 -m json.tool | head -5
+$OS/_ingest/pipeline/vault-audit-parse | python3 -m json.tool | head -3
+$OS/_index_template | python3 -c "import sys,json; print(sorted(t['name'] for t in json.load(sys.stdin)['index_templates'] if not t['name'].startswith('tenant')))"
 ```
 
+The second command should list `orcastra-access-template`, `orcastra-app-template`,
+`orcastra-audit-template`, `security-auditlog-template` and `vault-audit-template`.
+
 !!! tip "Authentication Errors"
-    If you see `Expecting value: line 1 column 1 (char 0)`, the password variable may have been lost. Use the literal password instead:
+    If you see `Expecting value: line 1 column 1 (char 0)`, the password variable may have been
+    lost. Set it again from `.env` and rebuild `$OS`:
 
     ```bash
-    curl -sk -u "admin:your-actual-password" ...
+    set -a; . ./.env; set +a; OPENSEARCH_PASS="$OPENSEARCH_ADMIN_PASSWORD"
+    OS="curl -s --cacert certs/root-ca.pem -u admin:$OPENSEARCH_PASS https://localhost:9200"
     ```
 
 ---
 
-## Step 11: Create ISM Retention Policies
+## Step 10: Create ISM Retention Policies
 
 Index State Management (ISM) enforces retention automatically. Without it, indices
 grow unbounded. Each policy attaches to new indices through its `ism_template`
-(matched by index pattern) at creation time, so the date-based indices Fluent Bit
-writes (`orcastra-access-YYYY.MM.DD`, etc.) pick up their lifecycle with no manual
-step. Create the policies now, before any logs flow.
+(matched by index pattern) at creation time, so the indices Fluent Bit writes pick up their
+lifecycle with no manual step. Create the policies now, before any logs flow.
+
+| Logs | Index | Retention | Read-only after |
+|---|---|---|---|
+| Access | `orcastra-access-YYYY.MM.DD` | 90 days | 2 days |
+| App | `orcastra-app-YYYY.MM.DD` | 30 days | 2 days |
+| Audit | `orcastra-audit-YYYY.MM` | 3 years | 35 days |
+| Vault audit | `vault-audit-YYYY.MM` | 3 years | 35 days |
+| Security plugin audit | `security-auditlog-YYYY.MM` | 1 year | 35 days |
+
+Every index is snapshotted to the `orcastra-archive` repository before it is deleted.
+
+!!! warning "Never make an index read-only while it is still written"
+    The read-only step (`warm`) comes only after the period an index covers is over: a daily
+    index after 2 days, a monthly index after 35 days. Later log lines buffered by Fluent Bit
+    (for example after an outage) must arrive before that point, or they are rejected. Monthly
+    indices are deleted at retention plus one month, so every document in them is kept for at
+    least the full retention period.
 
 ### Register the Snapshot Repository
 
@@ -853,8 +954,7 @@ repository must exist first. The compose file already mounts the archive volume 
 `/usr/share/opensearch/snapshots` and `opensearch.yml` registers it as `path.repo`.
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_snapshot/orcastra-archive" \
+$OS/_snapshot/orcastra-archive -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "type": "fs",
@@ -869,23 +969,26 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 
 Should return `{"acknowledged":true}`.
 
-### Access Logs Policy (90 days)
+!!! note "Snapshots stay on this VM"
+    The repository is a directory on the same disk. It protects against mistakes and bad
+    changes, not against losing the VM. Copy `/opt/opensearch/archive` to off-host storage for
+    disaster recovery.
+
+### Access Logs Policy (90 days, daily indices)
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_plugins/_ism/policies/orcastra-access-policy" \
+$OS/_plugins/_ism/policies/orcastra-access-policy -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "policy": {
-    "description": "ISM policy for orcastra-access indices - 90 day retention with archive before delete",
+    "description": "orcastra-access daily indices - 90 day retention with archive before delete",
     "default_state": "hot",
     "states": [
       { "name": "hot", "actions": [], "transitions": [
-        { "state_name": "warm", "conditions": { "min_index_age": "7d" } },
-        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+        { "state_name": "warm", "conditions": { "min_index_age": "2d" } }
       ] },
-      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
-        { "state_name": "archive", "conditions": { "min_index_age": "85d" } }
+      { "name": "warm", "actions": [ { "read_only": {} }, { "force_merge": { "max_num_segments": 1 } } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "89d" } }
       ] },
       { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
         { "state_name": "delete", "conditions": { "min_index_age": "90d" } }
@@ -897,53 +1000,21 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 }'
 ```
 
-### Audit Logs Policy (3 years)
+### App Logs Policy (30 days, daily indices)
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_plugins/_ism/policies/orcastra-audit-policy" \
+$OS/_plugins/_ism/policies/orcastra-app-policy -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "policy": {
-    "description": "ISM policy for orcastra-audit indices - 3 year retention with archive before delete",
+    "description": "orcastra-app daily indices - 30 day retention with archive before delete",
     "default_state": "hot",
     "states": [
       { "name": "hot", "actions": [], "transitions": [
-        { "state_name": "warm", "conditions": { "min_index_age": "30d" } },
-        { "state_name": "warm", "conditions": { "min_size": "50gb" } }
+        { "state_name": "warm", "conditions": { "min_index_age": "2d" } }
       ] },
-      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
-        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
-      ] },
-      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
-        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
-      ] },
-      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
-        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
-      ] },
-      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
-    ],
-    "ism_template": [ { "index_patterns": ["orcastra-audit-*"], "priority": 100 } ]
-  }
-}'
-```
-
-### App Logs Policy (30 days)
-
-```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_plugins/_ism/policies/orcastra-app-policy" \
-  -H "Content-Type: application/json" \
-  -d '{
-  "policy": {
-    "description": "ISM policy for orcastra-app indices - 30 day retention with archive before delete",
-    "default_state": "hot",
-    "states": [
-      { "name": "hot", "actions": [], "transitions": [
-        { "state_name": "warm", "conditions": { "min_index_age": "7d" } }
-      ] },
-      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
-        { "state_name": "archive", "conditions": { "min_index_age": "25d" } }
+      { "name": "warm", "actions": [ { "read_only": {} }, { "force_merge": { "max_num_segments": 1 } } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "29d" } }
       ] },
       { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
         { "state_name": "delete", "conditions": { "min_index_age": "30d" } }
@@ -955,28 +1026,50 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 }'
 ```
 
-### Vault Audit Policy (3 years)
+### Audit Logs Policy (3 years, monthly indices)
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
-  "https://localhost:9200/_plugins/_ism/policies/vault-audit-policy" \
+$OS/_plugins/_ism/policies/orcastra-audit-policy -X PUT \
   -H "Content-Type: application/json" \
   -d '{
   "policy": {
-    "description": "ISM policy for vault-audit indices - 3 year retention with archive before delete",
+    "description": "orcastra-audit monthly indices - 3 year retention with archive before delete",
     "default_state": "hot",
     "states": [
       { "name": "hot", "actions": [], "transitions": [
-        { "state_name": "warm", "conditions": { "min_index_age": "30d" } }
+        { "state_name": "warm", "conditions": { "min_index_age": "35d" } }
       ] },
-      { "name": "warm", "actions": [ { "force_merge": { "max_num_segments": 1 } }, { "read_only": {} } ], "transitions": [
-        { "state_name": "cold", "conditions": { "min_index_age": "180d" } }
-      ] },
-      { "name": "cold", "actions": [ { "read_only": {} } ], "transitions": [
-        { "state_name": "archive", "conditions": { "min_index_age": "1080d" } }
+      { "name": "warm", "actions": [ { "read_only": {} }, { "force_merge": { "max_num_segments": 1 } } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1125d" } }
       ] },
       { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
-        { "state_name": "delete", "conditions": { "min_index_age": "1095d" } }
+        { "state_name": "delete", "conditions": { "min_index_age": "1126d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["orcastra-audit-*"], "priority": 100 } ]
+  }
+}'
+```
+
+### Vault Audit Policy (3 years, monthly indices)
+
+```bash
+$OS/_plugins/_ism/policies/vault-audit-policy -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "vault-audit monthly indices - 3 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "35d" } }
+      ] },
+      { "name": "warm", "actions": [ { "read_only": {} }, { "force_merge": { "max_num_segments": 1 } } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "1125d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "1126d" } }
       ] },
       { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
     ],
@@ -985,21 +1078,365 @@ curl -sk -u "admin:$OPENSEARCH_PASS" -X PUT \
 }'
 ```
 
+### Security Audit Log Policy (1 year, monthly indices)
+
+```bash
+$OS/_plugins/_ism/policies/security-auditlog-policy -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "security-auditlog monthly indices - 1 year retention with archive before delete",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [
+        { "state_name": "warm", "conditions": { "min_index_age": "35d" } }
+      ] },
+      { "name": "warm", "actions": [ { "read_only": {} }, { "force_merge": { "max_num_segments": 1 } } ], "transitions": [
+        { "state_name": "archive", "conditions": { "min_index_age": "395d" } }
+      ] },
+      { "name": "archive", "actions": [ { "snapshot": { "repository": "orcastra-archive", "snapshot": "{{ctx.index}}" } } ], "transitions": [
+        { "state_name": "delete", "conditions": { "min_index_age": "396d" } }
+      ] },
+      { "name": "delete", "actions": [ { "delete": {} } ], "transitions": [] }
+    ],
+    "ism_template": [ { "index_patterns": ["security-auditlog-*"], "priority": 100 } ]
+  }
+}'
+```
+
 ### Verify Policies
 
 ```bash
-curl -sk -u "admin:$OPENSEARCH_PASS" \
-  "https://localhost:9200/_plugins/_ism/policies" \
-  | python3 -c "import sys,json; print('\n'.join(p['_id'] for p in json.load(sys.stdin)['policies']))"
+$OS/_plugins/_ism/policies \
+  | python3 -c "import sys,json; print('\n'.join(sorted(p['_id'] for p in json.load(sys.stdin)['policies'])))"
 ```
 
-Should list all four: `orcastra-access-policy`, `orcastra-audit-policy`, `orcastra-app-policy`, `vault-audit-policy`.
+Should list all five: `orcastra-access-policy`, `orcastra-app-policy`, `orcastra-audit-policy`,
+`security-auditlog-policy`, `vault-audit-policy`.
+
+### Keep System Indices Without Replicas
+
+Creating the first policy makes the ISM plugin create its own index, `.opendistro-ism-config`, with
+one replica. A single node can never assign it, so the cluster turns yellow. It is a protected
+system index: even the `admin` user is refused, and only the admin certificate from Step 5 may
+change it:
+
+```bash
+ADM="curl -s --cacert certs/root-ca.pem --cert certs/admin.pem --key certs/admin-key.pem https://localhost:9200"
+for idx in $($OS/_cat/indices?h=index,rep\&expand_wildcards=all | awk '$2 > 0 {print $1}'); do
+  echo "$idx: $($ADM/$idx/_settings -X PUT -H "Content-Type: application/json" -d '{"index.number_of_replicas": 0}')"
+done
+$OS/_cluster/health | python3 -m json.tool | grep -E '"status"|unassigned_shards"'
+```
+
+Expect `"status": "green"` and `"unassigned_shards": 0`. Run the loop again whenever the cluster
+turns yellow after a plugin creates another system index.
 
 !!! note "Attachment timing"
-    ISM attaches a policy only to indices created **after** the policy exists. Since
-    these are created during VM 3 setup (before VM 2 / VM 4 start forwarding), every
-    new daily index is covered. If you add a policy after indices already exist, attach
-    it manually with `POST _plugins/_ism/add/<index>`.
+    ISM attaches a policy only to indices created **after** the policy exists. The security
+    plugin may already have created this month's `security-auditlog-*` index during startup;
+    attach the policy to it once:
+
+    ```bash
+    $OS/_plugins/_ism/add/security-auditlog-* -X POST -H "Content-Type: application/json" \
+      -d '{"policy_id": "security-auditlog-policy"}'
+    ```
+
+    The same command, with the matching policy, covers any other index that existed before its
+    policy.
+
+---
+
+## Step 11: Create Fluent Bit User
+
+Generate a password for the Fluent Bit service account:
+
+```bash
+FLUENTBIT_PASS="$(openssl rand -hex 16)"
+echo "Fluent Bit password: $FLUENTBIT_PASS"
+echo "FLUENTBIT_PASSWORD=$FLUENTBIT_PASS" >> .env
+```
+
+!!! danger "Save This Password"
+    The Fluent Bit password is required on both **VM 2** (Vault audit forwarding) and **VM 4** (Dashboard log forwarding).
+
+Create the user. From this moment VM 2 and VM 4 can write, so Steps 9 and 10 must be done first:
+
+```bash
+$OS/_plugins/_security/api/internalusers/fluentbit -X PUT \
+  -H "Content-Type: application/json" \
+  -d "{\"password\":\"$FLUENTBIT_PASS\",\"backend_roles\":[\"log_writer\"]}"
+```
+
+Copy the CA certificate to VM 2 and VM 4 so their Fluent Bit can verify this server
+([VM 2](vm2-vault.md) and [VM 4](vm4-dashboard.md) show where it goes):
+
+```bash
+cat certs/root-ca.pem    # public, safe to copy
+```
+
+---
+
+## Step 12: Import Dashboard Templates
+
+### Install Git and Create Script
+
+```bash
+apt update && apt install git -y
+```
+
+Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
+
+- **Orcastra Logs Overview**, combined view of all log types
+- **Orcastra Access Logs**, HTTP request monitoring and latency tracking
+- **Orcastra Activity & Audit Logs**, security compliance and user activity
+- **Vault Security Audit**, vault operations and secret access patterns
+
+!!! info "Dashboard Templates"
+    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-cmp repository](https://github.com/sctsivali/orcastra-cmp) under `config/opensearch-dashboards/`, or copy them from your deployment package.
+
+Place the following files in `config/opensearch-dashboards/`:
+
+- `access-logs-dashboard-v3.ndjson`
+- `audit-logs-dashboard-v3.ndjson`
+- `logs-overview-dashboard.ndjson`
+- `vault-audit-dashboard.ndjson`
+
+Run the import:
+
+```bash
+chmod +x setup_opensearch_dashboards.sh
+./setup_opensearch_dashboards.sh \
+  --url http://localhost:5601 \
+  --password "$OPENSEARCH_PASS" \
+  --dashboard-dir config/opensearch-dashboards
+```
+
+The import runs as `admin`, whose preferred tenant is **Global** (Step 7), so every user sees
+the dashboards. Objects saved in a user's Private tenant are visible only to that user.
+
+!!! tip "Password Variable Issue"
+    If you see `[ERROR] Admin password is required`, use the literal password instead:
+
+    ```bash
+    ./setup_opensearch_dashboards.sh \
+      --url http://localhost:5601 \
+      --password "your-actual-password" \
+      --dashboard-dir config/opensearch-dashboards
+    ```
+
+---
+
+## Step 13 (Recommended): Sign In with Authentik
+
+By default people sign in to Dashboards with the internal `admin` and `audit_viewer` accounts.
+Signing in with Authentik (VM 1) gives every person their own identity, central offboarding, and
+an audit trail by name. The internal `admin` account stays as the break-glass login.
+
+### Create the Authentik Application
+
+In the Authentik admin interface:
+
+1. **Directory → Groups**: create `opensearch-admins` (full access) and `opensearch-viewers`
+   (read-only), and add the people who need access.
+2. **Applications → Providers → Create → OAuth2/OpenID Provider**:
+    - **Name:** `OpenSearch Dashboards Provider`
+    - **Authorization flow:** `default-provider-authorization-implicit-consent`
+    - **Client type:** Confidential
+    - **Redirect URIs (Strict):** `https://<LOGS_DOMAIN>/auth/openid/login` and `https://<LOGS_DOMAIN>`
+    - **Signing key:** `authentik Self-signed Certificate`
+    - **Scopes:** `openid`, `email`, `profile`, `offline_access`
+    - **Include claims in id_token:** enabled (the `groups` claim comes from the `profile` scope)
+3. **Applications → Applications → Create**: name `OpenSearch Dashboards`, slug
+   `opensearch-dashboards`, provider `OpenSearch Dashboards Provider`.
+4. Open the application → **Policy / Group / User Bindings**: bind `opensearch-admins` and
+   `opensearch-viewers`, so people outside both groups are refused by Authentik.
+5. Note the provider's **Client ID** and **Client Secret**.
+
+### Configure OpenSearch
+
+The security index was initialized from files at first start; later changes are applied with
+`securityadmin.sh` and the admin certificate from Step 5. Write the authentication config, add
+the group mappings, then apply the three files:
+
+```bash
+AUTHENTIK_DOMAIN="<AUTHENTIK_DOMAIN>"      # for example sso.example.com
+CLIENT_ID="<CLIENT_ID>"
+
+cat > config/config.yml << EOF
+---
+_meta:
+  type: "config"
+  config_version: 2
+config:
+  dynamic:
+    http:
+      anonymous_auth_enabled: false
+      xff:
+        enabled: false
+    authc:
+      # Internal users: Fluent Bit, kibanaserver and the break-glass admin.
+      basic_internal_auth_domain:
+        http_enabled: true
+        transport_enabled: true
+        order: 0
+        http_authenticator:
+          type: "basic"
+          challenge: false
+        authentication_backend:
+          type: "intern"
+      # People, through Authentik. Tokens are bound to this provider: every Authentik provider
+      # can share one signing key, so a signature check alone would accept other apps' tokens.
+      openid_auth_domain:
+        http_enabled: true
+        transport_enabled: false
+        order: 1
+        http_authenticator:
+          type: "openid"
+          challenge: false
+          config:
+            subject_key: "preferred_username"
+            roles_key: "groups"
+            openid_connect_url: "https://${AUTHENTIK_DOMAIN}/application/o/opensearch-dashboards/.well-known/openid-configuration"
+            required_issuer: "https://${AUTHENTIK_DOMAIN}/application/o/opensearch-dashboards/"
+            required_audience: "${CLIENT_ID}"
+            jwt_clock_skew_tolerance_seconds: 30
+        authentication_backend:
+          type: "noop"
+EOF
+
+cat > config/roles_mapping.yml << 'EOF'
+---
+_meta:
+  type: "rolesmapping"
+  config_version: 2
+
+all_access:
+  reserved: false
+  backend_roles:
+    - "admin"
+    - "opensearch-admins"
+  description: "Break-glass admin and the Authentik opensearch-admins group"
+
+log_writer:
+  reserved: false
+  backend_roles:
+    - "log_writer"
+
+audit_reader:
+  reserved: false
+  backend_roles:
+    - "audit_reader"
+
+audit_admin:
+  reserved: false
+  backend_roles:
+    - "admin"
+
+kibana_server:
+  reserved: true
+  users:
+    - "kibanaserver"
+
+# Authentik opensearch-viewers: read every log index, use Dashboards in read-only mode.
+readall:
+  reserved: false
+  backend_roles:
+    - "opensearch-viewers"
+
+kibana_user:
+  reserved: false
+  backend_roles:
+    - "opensearch-viewers"
+
+logs_readonly_ui:
+  reserved: false
+  backend_roles:
+    - "opensearch-viewers"
+EOF
+```
+
+Apply the three files:
+
+```bash
+for t in config:config.yml roles:roles.yml rolesmapping:roles_mapping.yml; do
+  docker run --rm --network orcastra_opensearch-net \
+    -v "$PWD/certs:/certs:ro" -v "$PWD/config:/work:ro" --user 0 \
+    --entrypoint /usr/share/opensearch/plugins/opensearch-security/tools/securityadmin.sh \
+    opensearchproject/opensearch:3.5.0 \
+    -h opensearch -p 9200 -icl -cacert /certs/root-ca.pem -cert /certs/admin.pem -key /certs/admin-key.pem \
+    -f "/work/${t#*:}" -t "${t%%:*}" | grep -E "Done with success|ERR"
+done
+```
+
+Each of the three should print `Done with success`.
+
+!!! warning "Do not apply `internal_users.yml` this way"
+    The `fluentbit` user exists only through the API (Step 11). Applying the users file with
+    `securityadmin.sh` would replace all internal users and break log shipping.
+
+### Configure Dashboards
+
+Add the client secret and a cookie encryption password to the Dashboards keystore from Step 7:
+
+```bash
+CLIENT_SECRET="<CLIENT_SECRET>"
+COOKIE_PASSWORD="$(openssl rand -base64 48 | tr -d '\n')"
+
+tmp="$(mktemp -d)"; install -o 1000 -g 1000 -m 600 config/opensearch_dashboards.keystore "$tmp/"; chown 1000:1000 "$tmp"
+docker run --rm -i -v "$tmp:/out" --entrypoint bash opensearchproject/opensearch-dashboards:3.5.0 -c '
+  set -e; read -r secret; read -r cookie
+  cp /out/opensearch_dashboards.keystore config/
+  printf %s "$secret" | bin/opensearch-dashboards-keystore add --stdin --silent --force opensearch_security.openid.client_secret
+  printf %s "$cookie" | bin/opensearch-dashboards-keystore add --stdin --silent --force opensearch_security.cookie.password
+  bin/opensearch-dashboards-keystore list
+  cp config/opensearch_dashboards.keystore /out/' <<< "$CLIENT_SECRET
+$COOKIE_PASSWORD"
+install -o 1000 -g 1000 -m 600 "$tmp/opensearch_dashboards.keystore" config/
+rm -rf "$tmp"
+```
+
+The listing should show `opensearch.password`, `opensearch_security.openid.client_secret` and
+`opensearch_security.cookie.password`. Then add the sign-in settings:
+
+```bash
+set -a; . ./.env; set +a
+cat >> config/opensearch_dashboards.yml << EOF
+
+# Sign-in through Authentik; the password form stays for the break-glass admin.
+opensearch_security.auth.type: ["openid", "basicauth"]
+opensearch_security.auth.multiple_auth_enabled: true
+opensearch_security.openid.connect_url: "https://${AUTHENTIK_DOMAIN}/application/o/opensearch-dashboards/.well-known/openid-configuration"
+opensearch_security.openid.client_id: "${CLIENT_ID}"
+opensearch_security.openid.scope: "openid profile email offline_access"
+# Cloudflare terminates TLS, so Dashboards must be told its public URL.
+opensearch_security.openid.base_redirect_url: "https://${LOGS_DOMAIN}"
+opensearch_security.openid.logout_url: "https://${AUTHENTIK_DOMAIN}/application/o/opensearch-dashboards/end-session/"
+opensearch_security.openid.refresh_tokens: true
+opensearch_security.ui.openid.login.buttonname: "Log in with SSO"
+opensearch_security.cookie.isSameSite: "Lax"
+opensearch_security.session.ttl: 28800000
+EOF
+```
+
+Then recreate Dashboards and confirm the SSO login redirects to Authentik:
+
+```bash
+docker compose up -d --force-recreate opensearch-dashboards
+until [ "$(docker inspect -f '{{.State.Health.Status}}' opensearch-dashboards)" = healthy ]; do sleep 5; done
+curl -s -o /dev/null -w '%{redirect_url}\n' "http://127.0.0.1:5601/auth/openid/login?nextUrl=%2F"
+```
+
+The printed URL should start with `https://<AUTHENTIK_DOMAIN>/application/o/authorize/` and
+contain `redirect_uri=https%3A%2F%2F<LOGS_DOMAIN>%2Fauth%2Fopenid%2Flogin`.
+
+!!! warning "Dashboards does not start while Authentik is unreachable"
+    With OpenID enabled, Dashboards fetches Authentik's discovery document at startup and exits
+    if it cannot. A running Dashboards is not affected by an Authentik outage, but a restart
+    during one takes the UI down, password login included. To get back in, set
+    `opensearch_security.auth.type: "basicauth"` in `config/opensearch_dashboards.yml`, recreate
+    the container, sign in as `admin`, and restore the setting once Authentik is back. The REST
+    API never depends on Authentik.
 
 ---
 
@@ -1009,10 +1446,12 @@ After completing VM 3 setup, you should have the following values saved:
 
 | Value | Used On | Environment Variable (VM 4) |
 |---|---|---|
-| OpenSearch Admin Password | VM 3 (admin operations) | - |
+| OpenSearch Admin Password | VM 3 (admin operations, break-glass sign-in) | - |
 | Dashboards Password | VM 3 (internal user) | - |
 | Fluent Bit Password | VM 2, VM 4 | `OPENSEARCH_PASSWORD` |
 | OpenSearch IP | VM 2, VM 4 | `OPENSEARCH_HOST` |
+| CA certificate (`certs/root-ca.pem`) | VM 2, VM 4 (TLS verification) | - |
+| CA private key (`certs/root-ca-key.pem`) | offline backup only | - |
 
 ---
 

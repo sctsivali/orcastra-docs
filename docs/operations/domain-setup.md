@@ -58,11 +58,11 @@ In the Cloudflare Dashboard, go to your tunnel → **Public Hostname** tab. Add 
 | `app` | `orcastra.io` | `http://localhost:4321` | Frontend (VM 4) |
 | `api` | `orcastra.io` | `http://localhost:8765` | Backend API (VM 4) |
 | `sso` | `orcastra.io` | `http://<VM1_PRIVATE_IP>:9000` | Authentik (VM 1) |
-| `logs` | `orcastra.io` | `https://<VM3_PRIVATE_IP>:5601` | OpenSearch Dashboards (VM 3) |
+| `logs` | `orcastra.io` | `http://<VM3_PRIVATE_IP>:5601` | OpenSearch Dashboards (VM 3) |
 
 !!! tip "Important Settings"
     - **`api.orcastra.io`:** Click "Additional application settings" → enable **WebSockets**
-    - **`logs.orcastra.io`:** Set Type = HTTPS, and enable **No TLS Verify** (OpenSearch uses self-signed certificates)
+    - **`logs.orcastra.io`:** Type = HTTP. Dashboards serves plain HTTP on the private network and Cloudflare terminates TLS. Dashboards listens on `VM3_PRIVATE_IP` only, so the tunnel connector must reach VM 3 over the private network. The hostname must match `LOGS_DOMAIN` from VM 3 Step 2.
     - If a subdomain already has a DNS record, **delete it first** in DNS settings
 
 ---

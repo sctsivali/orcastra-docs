@@ -336,14 +336,18 @@ nano /etc/fluent-bit/fluent-bit.conf
     HTTP_User         fluentbit
     HTTP_Passwd       <FLUENTBIT_PASSWORD_FROM_VM3>
     tls               On
-    tls.verify        Off
+    # Verify VM 3 against its private CA (VM 3 Step 5); the node certificate carries VM3_PRIVATE_IP.
+    tls.verify        On
+    tls.ca_file       /etc/fluent-bit/orcastra-logging-ca.pem
     Suppress_Type_Name On
     net.connect_timeout       10
     net.keepalive             on
     net.keepalive_idle_timeout 30
     Logstash_Format   On
     Logstash_Prefix   vault-audit
-    Logstash_DateFormat %Y.%m.%d
+    # One index per month: Vault audit is kept 3 years, and one index per day would exceed the
+    # single-node shard limit (see VM 3 Step 9).
+    Logstash_DateFormat %Y.%m
     # Vault audit logs must never be dropped (compliance): unlimited retries + disk backlog
     Retry_Limit       no_limits
     storage.total_limit_size  4G
@@ -355,12 +359,26 @@ nano /etc/fluent-bit/fluent-bit.conf
 
 !!! warning "Placeholder Values"
     Replace `<VM3_PRIVATE_IP>` and `<FLUENTBIT_PASSWORD_FROM_VM3>` with actual values from [VM 3 setup](vm3-opensearch.md).
+    VM 3 is deployed after this VM, so finish this output (and the CA file below) once VM 3 Step 11
+    is done; until then Fluent Bit keeps the audit log buffered on disk.
 
     The Fluent Bit password is a single shared credential used in **three** places:
     the `fluentbit` user in OpenSearch (VM 3), this literal `HTTP_Passwd` (VM 2), and
     `OPENSEARCH_PASSWORD` in the dashboard `.env` (VM 4). Rotating it means updating
     all three at once, or shipping silently breaks (see
     [Troubleshooting](../operations/troubleshooting.md)).
+
+### Install the Logging CA Certificate
+
+Copy `certs/root-ca.pem` from VM 3 (Step 11 prints it) to this VM:
+
+```bash
+nano /etc/fluent-bit/orcastra-logging-ca.pem    # paste the certificate, including the BEGIN/END lines
+chmod 644 /etc/fluent-bit/orcastra-logging-ca.pem
+openssl x509 -in /etc/fluent-bit/orcastra-logging-ca.pem -noout -subject
+```
+
+The subject should read `CN = Orcastra Logging Root CA`.
 
 ### Configure Parser
 
