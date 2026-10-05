@@ -17,7 +17,7 @@ real problem with a specific remediation:
 |---|---|
 | Preflight | OS, architecture, RAM/disk/CPU, Docker + Compose v2, privilege, `openssl`/`curl`, and that the HTTPS port and `127.0.0.1:8200` are free |
 | Docker | If absent on Ubuntu/Debian, installs Docker Engine + the Compose plugin from the official apt repository (after you confirm) |
-| Registry | Confirms the images are pullable; for the private repository it runs `docker login` and retries |
+| Registry | Confirms the images are pullable, and runs `docker login` then retries if a pull is denied |
 | Configuration | Detects the host address and asks you to confirm it, then derives the cert SAN and all three URLs from that one value |
 | Secrets | Generates every secret (`openssl rand` equivalents), keeps `LOCAL_JWT_SECRET` separate from `SECRET_KEY`, and keeps the database password in sync |
 | TLS | Writes a self-signed server certificate whose SAN matches the host (or installs one you supply) |
@@ -30,8 +30,9 @@ real problem with a specific remediation:
 ## Prerequisites
 
 - Ubuntu 20.04+ or Debian 11+ (other distributions: follow the [Quick Start](quick-start.md)).
-- Root, or a user in the `docker` group (installing Docker itself needs root/sudo).
-- A Docker Hub account with access to the `svlct/orcastra-dashboard-mini` images.
+- Root. The bootstrap runs the installer through `sudo` when you start it as another user.
+- Network access to Docker Hub. The `svlct/orcastra-dashboard-mini` images are public, so no
+  Docker Hub account is needed.
 
 ## Run it
 
@@ -50,9 +51,11 @@ Interactive runs detect the host IP and ask you to confirm it. The address you c
 the certificate SAN and the `NEXTAUTH_URL` / `NEXT_PUBLIC_API_URL` / `CORS_ORIGINS` values, so
 they cannot drift apart.
 
-!!! note "Private images"
-    The images are distributed through a private Docker Hub repository. When a pull is denied,
-    the installer runs `docker login` and follows the prompt (including the web device-code
+Questions are read from your terminal, so they work through the `curl | bash` pipe.
+
+!!! note "Registry login"
+    The images pull anonymously. If a pull is ever denied (a private mirror, or a rate limit),
+    the installer runs `docker login` and follows its prompt (including the web device-code
     flow), then retries. In `--non-interactive` mode, run `docker login` yourself first.
 
 ## The first administrator
@@ -126,7 +129,9 @@ curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/instal
   --convenience --quick
 ```
 
-An answer file is flat `KEY=value` (precedence: CLI flag, then answer file, then default):
+An answer file is flat `KEY=value`. The same keys also work as environment variables with an
+`ORCASTRA_` prefix (`ORCASTRA_HOST=dash.example.com`). Precedence is CLI flag, then answer
+file, then environment, then default:
 
 ```ini
 HOST=dash.example.com
@@ -175,7 +180,7 @@ curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/instal
 | Symptom | Cause and fix |
 |---|---|
 | Stops at preflight with a FAIL row | Read the remediation printed under the row; fix it and re-run |
-| `Registry authentication required` | Run `docker login` with an account that can pull `svlct/orcastra-dashboard-mini` |
+| `Registry authentication required` | A pull was denied (a mirror, or Docker Hub rate limits). Run `docker login`, then re-run |
 | Backend never becomes healthy | Check `VAULT_TOKEN` in `.env` and `docker compose -p orcastra-mini logs backend` |
 | Browser rejects the certificate | The SAN must match the URL host (`IP:` for an address, `DNS:` for a name); re-run with the right `--host` |
 | Sign-in fails after a reboot | Vault is sealed - unseal it (guided mode) |

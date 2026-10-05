@@ -32,7 +32,13 @@ Create a dedicated deployment directory and work from it, then create the config
 mkdir -p ~/orcastra && cd ~/orcastra
 mkdir -p config/fluent-bit
 mkdir -p config/opensearch-dashboards
+# the backend runs as uid 1000 and writes to ./config and to the uploads directory
+mkdir -p /var/orcastra/uploads
+chown 1000:1000 config /var/orcastra/uploads
 ```
+
+Without the `chown`, the backend cannot save node display names under `config/` (they reset on
+every restart) and uploads fail.
 
 ---
 
@@ -646,7 +652,8 @@ CONTAINER_PREFIX=orcastra-dashboard
 POSTGRES_USER=orcastra
 POSTGRES_PASSWORD=<GENERATED_HEX_PASSWORD>
 POSTGRES_DB=orcastra_dashboard
-POSTGRES_PORT=5432
+# Published on loopback only: Docker-published ports bypass the host firewall
+POSTGRES_PORT=127.0.0.1:5432
 DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastra_dashboard
 
 # === Backend (port: 8765) ===
@@ -697,7 +704,7 @@ VAULT_PKI_ROLE=lxd
 
 # === Redis ===
 REDIS_ENABLED=true
-REDIS_PORT=6381
+REDIS_PORT=127.0.0.1:6381
 REDIS_URL=redis://redis:6379/0
 
 # === Security ===
@@ -710,6 +717,9 @@ RATE_LIMIT_SUBNET_REQUESTS=1500
 RATE_LIMIT_FRESH_REQUESTS=12
 RATE_LIMIT_WINDOW_SECONDS=60
 SECURITY_PROBE_BLOCK_ENABLED=true
+# Hosts allowed to set the client IP headers. Narrow this to your real proxies (for example
+# 127.0.0.0/8,::1/128 plus the Docker network): every private range listed here lets a
+# client on it choose its own address for rate limiting and audit.
 TRUSTED_PROXY_CIDRS=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7,fe80::/10
 ALLOW_PRIVATE_FORWARDED_IPS=false
 FORWARD_CLIENT_IP_HEADERS=true

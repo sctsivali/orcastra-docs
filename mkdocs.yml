@@ -151,6 +151,7 @@ nav:
       - Operations & Troubleshooting: mini/operations.md
   - Deployment:
       - deployment/index.md
+      - Automated Install: deployment/automated-install.md
       - VM 1 - Authentik (SSO): deployment/vm1-authentik.md
       - VM 2 - Vault (Secrets): deployment/vm2-vault.md
       - VM 3 - OpenSearch (Logging): deployment/vm3-opensearch.md

@@ -76,7 +76,10 @@ The platform deploys across four virtual machines, each hosting a dedicated comp
 | VM 4 | **Dashboard** | Orcastra Web Application | 4 vCPU, 8 GB RAM, 60 GB |
 
 !!! tip "Deployment Order"
-    Deploy in order: **VM 1 → VM 2 → VM 3 → VM 4**. Each VM depends on the previous one for configuration values (tokens, passwords, URLs).
+    Deploy VM 1, then VM 2 up to its audit logging, then VM 3, then Fluent Bit on VM 2, then
+    VM 4. Each step needs values from an earlier one (tokens, passwords, URLs). The
+    [Deployment Guide](deployment/index.md) has the details, and on an LXD host the
+    [automated installer](deployment/automated-install.md) does it all in one command.
 
 !!! note "Two deployment models"
     The four-VM topology above is the full version. For edge sites, single-tenant labs, or
@@ -89,6 +92,7 @@ The platform deploys across four virtual machines, each hosting a dedicated comp
 | Document | Description |
 |---|---|
 | [Prerequisites](getting-started/prerequisites.md) | Required infrastructure and accounts |
+| [Automated Install](deployment/automated-install.md) | One-command install on an LXD host |
 | [VM 1 - Authentik](deployment/vm1-authentik.md) | SSO provider setup |
 | [VM 2 - Vault](deployment/vm2-vault.md) | Secret engine & PKI setup |
 | [VM 3 - OpenSearch](deployment/vm3-opensearch.md) | Log aggregation & dashboards |

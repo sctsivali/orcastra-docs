@@ -526,7 +526,7 @@ vault token create \
   -orphan \
   -display-name="orcastra-dashboard" \
   -policy="orcastra-policy" \
-  -ttl=0
+  -period=720h
 ```
 
 Copy the new `token` value (starts with `hvs.`). On **VM 4 (Dashboard)**:
@@ -540,9 +540,12 @@ docker compose -f docker-compose.prod.yml restart backend
 ```
 
 !!! tip "Prevent Token Expiry"
-    Use `-ttl=0` when creating the token to prevent it from expiring.
-    Non-root tokens have a default TTL (usually 768h / 32 days) and **will expire silently**.
-    Always verify token validity after Vault restarts or maintenance.
+    `-ttl=0` does not prevent expiry. A non-root token created that way still gets the
+    default TTL (768h, 32 days) and **expires silently**. Use a periodic token as above and
+    renew it on a schedule, see
+    [Renew the Dashboard Token](../deployment/vm2-vault.md#renew-the-dashboard-token).
+    For a token created with `-ttl=0` earlier, `vault token lookup` shows its end date in
+    `expire_time`. Replace it before that date.
 
 !!! info "Vault Token Lifecycle"
     Tokens can become invalid for several reasons:
