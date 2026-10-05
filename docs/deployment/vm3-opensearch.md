@@ -1116,6 +1116,20 @@ Should list all five: `orcastra-access-policy`, `orcastra-app-policy`, `orcastra
 
 ### Keep System Indices Without Replicas
 
+ISM writes its own history to `.opendistro-ism-managed-index-history-*` and rolls that index over
+every day, by default with one replica. Give the history indices no replica, or the cluster turns
+yellow again every day:
+
+```bash
+$OS/_cluster/settings -X PUT \
+  -H "Content-Type: application/json" \
+  -d '{
+  "persistent": { "plugins.index_state_management.history.number_of_replicas": 0 }
+}'
+```
+
+Should return `"acknowledged":true`.
+
 Creating the first policy makes the ISM plugin create its own index, `.opendistro-ism-config`, with
 one replica. A single node can never assign it, so the cluster turns yellow. It is a protected
 system index: even the `admin` user is refused, and only the admin certificate from Step 5 may
