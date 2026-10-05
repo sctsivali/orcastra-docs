@@ -5,14 +5,15 @@
   python3 installer/tools/build_pyz.py mini|full  # one
 
 Outputs installer/dist/orcastra-{mini,full}-install.pyz (+ .sha256). Each archive carries
-its own package plus the shared orcastra_core package. Stdlib only (zipapp).
+its own package plus the shared orcastra_core package. Stdlib only.
+
+The build is reproducible: entries are sorted and carry a fixed timestamp and mode, so the
+same source gives the same sha256 as the one pinned in get.sh / get-full.sh.
 """
 import hashlib
 import os
-import shutil
 import sys
-import tempfile
-import zipapp
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INSTALLER = os.path.dirname(HERE)
@@ -24,22 +25,35 @@ TARGETS = {
 }
 
 
+def _entries(pkg: str):
+    # our own __main__ (zipapp's generated one drops main()'s return value, so every
+    # failure would exit 0)
+    yield "__main__.py", f"import sys\nfrom {pkg}.cli import main\nsys.exit(main())\n".encode()
+    for name in (pkg, "orcastra_core"):
+        root = os.path.join(INSTALLER, name)
+        for d, dirs, files in os.walk(root):
+            dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+            for f in sorted(files):
+                if f.endswith(".pyc"):
+                    continue
+                path = os.path.join(d, f)
+                with open(path, "rb") as fh:
+                    yield os.path.relpath(path, INSTALLER).replace(os.sep, "/"), fh.read()
+
+
 def build(target: str) -> str:
     pkg, out_name = TARGETS[target]
     out = os.path.join(DIST, out_name)
     os.makedirs(DIST, exist_ok=True)
-    build_dir = tempfile.mkdtemp(prefix="orcastra-pyz-")
-    try:
-        for name in (pkg, "orcastra_core"):
-            shutil.copytree(os.path.join(INSTALLER, name), os.path.join(build_dir, name),
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        # our own __main__ (zipapp's generated one drops main()'s return value, so every
-        # failure would exit 0)
-        with open(os.path.join(build_dir, "__main__.py"), "w", encoding="utf-8") as fh:
-            fh.write(f"import sys\nfrom {pkg}.cli import main\nsys.exit(main())\n")
-        zipapp.create_archive(build_dir, target=out, interpreter="/usr/bin/env python3")
-    finally:
-        shutil.rmtree(build_dir, ignore_errors=True)
+    with open(out, "wb") as raw:
+        raw.write(b"#!/usr/bin/env python3\n")
+        with zipfile.ZipFile(raw, "w", zipfile.ZIP_DEFLATED) as zf:
+            for arcname, data in sorted(_entries(pkg)):
+                info = zipfile.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o644 << 16
+                zf.writestr(info, data)
+    os.chmod(out, 0o755)
     with open(out, "rb") as fh:
         digest = hashlib.sha256(fh.read()).hexdigest()
     with open(out + ".sha256", "w", encoding="utf-8") as fh:

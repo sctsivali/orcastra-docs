@@ -17,7 +17,7 @@ SHA_URL="${ORCASTRA_INSTALLER_SHA_URL:-${PYZ_URL}.sha256}"
 LOCAL_PYZ="${ORCASTRA_INSTALLER_PYZ:-}"   # skip download, use this local zipapp
 # Expected digest of the default PYZ_URL, pinned here so a tampered release asset is caught
 # even when its .sha256 neighbour was replaced too. Empty when PYZ_URL is overridden.
-PINNED_SHA256="7b0b23769b0a4bd26f58f95a1673893f9ababe0ed03813ac88e3c9c3c040daf8"
+PINNED_SHA256="15ed84fc5a1625dae605e8d0143f550299b6800ecae65f70c3ed706f4054d4e3"
 if [ -n "${ORCASTRA_INSTALLER_URL:-}" ]; then PINNED_SHA256=""; fi   # an override is checked against its .sha256
 
 say() { printf '  %s\n' "$*"; }
