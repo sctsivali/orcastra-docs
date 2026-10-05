@@ -47,3 +47,15 @@ jobs:
           python installer/tools/build_pyz.py
           python installer/dist/orcastra-mini-install.pyz --version
           python installer/dist/orcastra-full-install.pyz --version
+      - name: Bootstrap pins match this source
+        # The build is reproducible, so a mismatch means the published release no longer
+        # matches the source: cut a new installer release and re-pin. A warning, not a failure,
+        # so guide edits are not blocked on a release.
+        if: matrix.python == '3.12'
+        run: |
+          for pair in "get.sh orcastra-mini-install.pyz" "get-full.sh orcastra-full-install.pyz"; do
+            set -- $pair
+            pinned=$(sed -n 's/^PINNED_SHA256="\([0-9a-f]*\)".*/\1/p' installer/$1)
+            built=$(cut -d' ' -f1 installer/dist/$2.sha256)
+            [ "$pinned" = "$built" ] || echo "::warning file=installer/$1::pinned sha256 $pinned differs from this source's build $built"
+          done
