@@ -100,115 +100,99 @@ The logging healthcheck is documented as a self-contained helper script in [Oper
 
 ## OpenSearch Index Management
 
-### Monthly Indices
-
-Fluent Bit writes Logstash-style daily names (`orcastra-access-2026.10.04`). The index template of
-each log type sets an ingest `default_pipeline` that routes the document to the **monthly** index
-(`orcastra-access-2026.10`), so shippers need no change and the single node stays far below its
-1000-shard limit. One daily index per log type would reach that limit in well under a year.
-
-| Index | Writer | Notes |
-|---|---|---|
-| `orcastra-access-YYYY.MM` | VM 4 Fluent Bit | HTTP request log |
-| `orcastra-audit-YYYY.MM` | VM 4 Fluent Bit | `event_id` as document ID, so a resend never duplicates |
-| `orcastra-app-YYYY.MM` | VM 4 Fluent Bit | application log |
-| `vault-audit-YYYY.MM` | VM 2 Fluent Bit | parsed by the `vault-audit-parse` pipeline |
-| `containers-<stack>-<env>-YYYY.MM` | per-stack Fluent Bit | Docker logs of other stacks, see below |
-| `security-auditlog-YYYY.MM` | OpenSearch security plugin | authentication and permission events |
-
-All templates use one shard and no replica (single node). Templates and pipelines are versioned
-in `orcastra-cmp/deploy/logging/opensearch/` and applied with `scripts/apply-ingest-config.sh`.
-
 ### Index Templates
 
+Three index templates are configured on VM 3 to define field mappings:
+
 - **`orcastra-access-template`** maps HTTP fields: `method`, `path`, `status_code`, `latency_ms`, `client.ip`, `client.user_agent`
-- **`orcastra-audit-template`** maps audit fields: `action`, `category`, `actor.user_id`, `target.type`, `target.id`, `result` (`event_id` is the document ID)
-- **`orcastra-app-template`**: settings only, dynamic mapping
+- **`orcastra-audit-template`** maps audit fields: `action`, `category`, `actor.user_id`, `target.type`, `target.id`, `result`
 - **`vault-audit-template`** maps Vault fields: `type`, `auth.client_token`, `request.operation`, `request.path`
-- **`containers-template`**: fixed fields (`stack`, `env`, `host`, `container_name`, `compose_project`,
-  `compose_service`, `image`, `level`, `message`, `request_id`); any other JSON key a container logs
-  is stored in the `flat_object` field `fields` and searchable as `fields.<key>`. This keeps a stack
-  with many different log formats from exploding the mapping or having documents rejected for
-  type conflicts.
 
-### Retention (ISM)
+### ISM (Index State Management) Policies
 
-Retention targets per log type:
+Retention runs automatically through four ISM policies created during VM 3 setup
+(see [Step 11](../deployment/vm3-opensearch.md#step-11-create-ism-retention-policies)).
+Each policy attaches to new indices through its `ism_template` (matched by index
+pattern) at creation time, so the date-based indices Fluent Bit writes pick up
+their lifecycle with no manual step. States advance by index age (`min_index_age`),
+and every index is snapshotted to the `orcastra-archive` repository before it is
+deleted.
 
-| Log type | Target |
-|---|---|
-| Access | 90 days |
-| Audit | 3 years |
-| App | 30 days |
-| Vault audit | 3 years |
+=== "Access Logs (90 days)"
 
-Each index is snapshotted to the `orcastra-archive` repository before it is deleted.
+    ```
+    hot     0-7d       ingesting (also rolls to warm at 50 GB)
+    warm    7-85d      force_merge to 1 segment, read-only
+    archive 85-90d     snapshot to orcastra-archive
+    delete  90d+       delete
+    ```
 
-!!! warning "Not enforced on the production cluster yet"
-    No ISM policy is attached on the production logging host (verified 2026-10-05), so indices
-    are kept until removed.
+=== "Audit Logs (3 years)"
 
-    Policies that advance by `min_index_age` and set `read_only` after 7 to 30 days were written
-    for daily indices. They must not be attached to the monthly layout: the current month's index
-    is still being written, and a read-only block stops ingestion mid-month. Index age also counts
-    from index creation, and the monthly indices produced by the 2026-10 consolidation were all
-    created on that day. Retention for monthly indices goes by the month in the index name (an
-    index is removed once its whole month is older than the target) and ships with the deployment
-    bundle in `orcastra-cmp/deploy/logging/` once enabled.
+    ```
+    hot     0-30d      ingesting (also rolls to warm at 50 GB)
+    warm    30-180d    force_merge to 1 segment, read-only
+    cold    180-1080d  read-only
+    archive 1080-1095d snapshot to orcastra-archive
+    delete  1095d+     delete
+    ```
 
----
+=== "App Logs (30 days)"
 
-## Container Logs From Other Stacks
+    ```
+    hot     0-7d       ingesting
+    warm    7-25d      force_merge to 1 segment, read-only
+    archive 25-30d     snapshot to orcastra-archive
+    delete  30d+       delete
+    ```
 
-The same OpenSearch can hold the Docker container logs of other stacks running alongside
-Orcastra, so audit and troubleshooting use one place. Each stack gets a write-only account that
-can create and write only `containers-<stack>-<env>-*`; it cannot read, delete, or touch any
-other index. Logs are shipped with TLS verification against the logging CA, either by the
-generic shipper in `orcastra-cmp/deploy/logging/shipper/` (a Fluent Bit that tails every Docker
-`json-file` log on the host and adds container and compose metadata, without touching the
-application containers) or by a Fluent Bit the stack already runs. The procedure is in
-`orcastra-cmp/deploy/logging/docs/onboarding-a-stack.md`.
+=== "Vault Audit (3 years)"
 
-The **Container Logs** dashboard (Global tenant) shows volume, levels and errors per stack, host
-and container, with the raw lines below. JSON log lines are parsed on ingest, and the level is
-recognised in common plain-text formats, so the level filter works across very different
-containers.
+    ```
+    hot     0-30d      ingesting
+    warm    30-180d    force_merge to 1 segment, read-only
+    cold    180-1080d  read-only
+    archive 1080-1095d snapshot to orcastra-archive
+    delete  1095d+     delete
+    ```
+
+The canonical policy definitions live with the deployment under
+`infrastructure/opensearch/ism-policies/`. Because attachment is by index pattern,
+the policy must exist before the first matching index is created; the deployment
+order applies policies prior to log forwarding.
 
 ---
 
 ## OpenSearch Security Model
 
-### People (SSO)
-
-Users sign in to OpenSearch Dashboards with Authentik. Membership of the Authentik group
-`opensearch-admins` grants full access; `opensearch-viewers` grants read-only access. Users in
-neither group are refused by Authentik. Tokens are bound to the OpenSearch Dashboards provider
-(issuer and audience checks), so a token issued for another application is not accepted.
-
-### Internal Users
+### Users
 
 | User | Role | Purpose |
 |---|---|---|
-| `admin` | `all_access` | Break-glass sign-in and administrative API calls |
-| `kibanaserver` | (built-in) | OpenSearch Dashboards internal user |
-| `fluentbit` | `log_writer` | VM 2 and VM 4 shippers: `orcastra-*`, `vault-audit-*` |
+| `admin` | All access | Administrative operations, dashboard import |
+| `fluentbit` | `log_writer` | Write-only access to `orcastra-*` and `vault-audit-*` indices |
 | `audit_viewer` | `audit_reader` | Read-only access to audit indices |
-| `fluentbit-<stack>-<env>` | `writer_<stack>_<env>` | Container logs of one stack and environment, write-only |
+| `kibanaserver` | (built-in) | OpenSearch Dashboards internal user |
 
-Internal users are managed through the security REST API (`scripts/provision-stack.sh` for
-writers); password hashes are not kept in files.
+!!! warning "Per-user unique bcrypt hashes"
+    Every internal user MUST have a unique bcrypt hash. Do not depend on a repo
+    helper script being present on the target VM. Generate each hash locally,
+    then write `internal_users.yml` by hand from the deployment guide.
 
-### Fluent Bit Writer Role (VM 2, VM 4)
-
-As deployed (`orcastra-cmp/deploy/logging/opensearch/security/roles.yml`). `manage` covers the
-mapping updates dynamic fields need (`indices:admin/mapping/auto_put` in OpenSearch 3.x):
+### Fluent Bit Writer Role
 
 ```yaml
 log_writer:
-  cluster_permissions: ["cluster_monitor", "cluster_composite_ops"]
+  cluster_permissions:
+    - cluster_composite_ops    # bulk writes authorize at cluster scope first
+    - cluster_monitor
+    - "cluster:admin/ingest/pipeline/put"
+    - "cluster:admin/ingest/pipeline/get"
+    - "indices:admin/template/get"
+    - "indices:admin/template/put"
   index_permissions:
     - index_patterns: ["orcastra-access-*", "orcastra-audit-*", "orcastra-app-*", "vault-audit-*"]
-      allowed_actions: ["crud", "create_index", "manage"]
+      allowed_actions: ["crud", "create_index", "manage", "indices:admin/mapping/auto_put"]
 ```
 
 ---

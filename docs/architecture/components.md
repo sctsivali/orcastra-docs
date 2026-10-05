@@ -84,8 +84,8 @@ graph TB
 
 | Container | Image | Port | Purpose |
 |---|---|---|---|
-| `opensearch` | `opensearchproject/opensearch:3.5.0` (pinned by digest) | 9200 | Search & analytics engine |
-| `opensearch-dashboards` | `opensearchproject/opensearch-dashboards:3.5.0` (pinned by digest) | 5601 | Log UI, sign-in through Authentik |
+| `opensearch-node1` | `opensearchproject/opensearch:3.5.0` | 9200 | Search & analytics engine |
+| `opensearch-dashboards` | `opensearchproject/opensearch-dashboards:3.5.0` | 5601 | Visualization UI |
 
 ### VM 4 - Orcastra CMP
 
