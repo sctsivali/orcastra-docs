@@ -3,8 +3,8 @@
 import os
 
 from .. import templates
-from ..errors import InstallError
-from ..fsutil import atomic_write, ensure_dir
+from orcastra_core.errors import InstallError
+from orcastra_core.fsutil import atomic_write, ensure_dir
 
 TITLE = "Write deployment files"
 
@@ -12,8 +12,8 @@ UPLOADS_DIR = "/var/orcastra/uploads"
 
 
 def run(ctx):
-    ensure_dir(os.path.join(ctx.config_dir, "nginx", "certs"))
-    ensure_dir(os.path.join(ctx.config_dir, "vault"))
+    ensure_dir(os.path.join(ctx.config_dir, "nginx", "certs"), dry_run=ctx.dry_run)
+    ensure_dir(os.path.join(ctx.config_dir, "vault"), dry_run=ctx.dry_run)
 
     atomic_write(ctx, ctx.compose_path, templates.render_compose(ctx.cfg["image_tag"]), mode=0o644)
     atomic_write(ctx, ctx.nginx_conf_path, templates.nginx_conf(), mode=0o644)

@@ -1,7 +1,7 @@
 """Phase 4 - configuration. Auto-detect the host address and reconfirm it, then resolve
 ports/TTLs. The confirmed host fills the cert SAN and all three URLs coherently."""
-from ..errors import AbortByUser, ConfigError
-from .. import netutil
+from orcastra_core.errors import AbortByUser, ConfigError
+from orcastra_core import netutil
 
 TITLE = "Configuration"
 

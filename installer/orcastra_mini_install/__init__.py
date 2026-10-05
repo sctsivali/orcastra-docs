@@ -5,4 +5,4 @@ optional Docker install, config wizard, secret/cert generation, Vault init/unsea
 admin bootstrap, and verification - with idempotent re-runs and a non-interactive mode.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.0-RC2"

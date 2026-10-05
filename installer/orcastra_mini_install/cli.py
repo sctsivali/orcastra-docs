@@ -2,14 +2,16 @@
 import argparse
 import os
 import sys
+import tempfile
 
 from . import __version__
 from .context import InstallContext
-from .errors import AbortByUser, InstallError
-from .log import Log
-from .proc import Proc
-from .prompt import Prompter
-from .state import State
+from orcastra_core.errors import AbortByUser, InstallError
+from orcastra_core.log import Log
+from orcastra_core.proc import Proc
+from orcastra_core.answers import combined_answers, parse_answer_file  # noqa: F401
+from orcastra_core.prompt import Prompter, open_tty
+from orcastra_core.state import State
 
 DEFAULT_INSTALL_DIR = "/opt/orcastra-mini"
 
@@ -104,18 +106,6 @@ def build_parser():
     return p
 
 
-def parse_answer_file(path: str) -> dict:
-    out = {}
-    with open(path, encoding="utf-8") as fh:
-        for raw in fh:
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, val = line.split("=", 1)
-            out[k.strip()] = val.strip()
-    return out
-
-
 def merge_answers(flags, answers: dict):
     """Precedence: explicit CLI flag > answer-file > default. Value flags default to None
     so 'unset' is detectable; booleans use the answer-file only when the CLI left them False."""
@@ -147,18 +137,33 @@ def main(argv=None) -> int:
     parser = build_parser()
     flags = parser.parse_args(argv)
 
-    answers = parse_answer_file(flags.answers) if flags.answers else {}
+    answers = combined_answers(flags.answers)
     merge_answers(flags, answers)
 
-    install_dir = flags.install_dir
-    os.makedirs(install_dir, exist_ok=True)
-    log_file = flags.log_file or os.path.join(install_dir, "install.log")
+    if os.geteuid() != 0 and not flags.dry_run:
+        print("Error: the installer must run as root (it installs Docker and writes under "
+              f"{flags.install_dir}). Re-run with sudo.", file=sys.stderr)
+        return 1
 
-    interactive = sys.stdin.isatty() and not flags.non_interactive and not flags.answers
-    log = Log(log_file, verbose=flags.verbose, color=(False if flags.quiet else None))
+    install_dir = flags.install_dir
+    if flags.dry_run and not os.path.isdir(install_dir):
+        # a rehearsal must not create the install dir, so its log goes to a temp file instead
+        fd, log_file = tempfile.mkstemp(prefix="orcastra-mini-dryrun-", suffix=".log")
+        os.close(fd)
+    else:
+        os.makedirs(install_dir, exist_ok=True)
+        log_file = flags.log_file or os.path.join(install_dir, "install.log")
+
+    tty = None if (flags.non_interactive or flags.answers) else open_tty()
+    interactive = tty is not None
+    log = Log(log_file, verbose=flags.verbose, color=(False if flags.quiet else None),
+              name="orcastra_mini_install")
     proc = Proc(log, dry_run=flags.dry_run)
-    state = State.load(os.path.join(install_dir, "install-state.json"))
-    prompt = Prompter(log, interactive=interactive, assume_yes=flags.assume_yes)
+    state = State.load(os.path.join(install_dir, "install-state.json"), dry_run=flags.dry_run)
+    if state.recovered_from:
+        log.warn(f"State file was unreadable; kept it as {state.recovered_from} and started "
+                 "a fresh ledger (each phase still probes what already exists).")
+    prompt = Prompter(log, interactive=interactive, assume_yes=flags.assume_yes, tty=tty)
 
     ctx = InstallContext(
         install_dir=install_dir, flags=flags, log=log, proc=proc, state=state,

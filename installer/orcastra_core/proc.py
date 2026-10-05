@@ -2,7 +2,7 @@
 secret-bearing args masked in logs, and a dry-run gate for mutating commands."""
 import subprocess
 
-from .log import Log
+from .log import Log  # noqa: F401  (type reference)
 
 
 class Result:
@@ -34,7 +34,7 @@ class Proc:
         self.dry_run = dry_run
 
     def run(self, argv, *, input: str = None, env: dict = None, secret_args=(),
-            mutating: bool = False, timeout: int = None) -> Result:
+            mutating: bool = False, timeout: int = None, quiet_output: bool = False) -> Result:
         """Run a command, capturing output. Returns a Result (never raises on non-zero;
         callers inspect `.ok`/`.rc`). When dry-run and `mutating`, the command is skipped
         and a synthetic success is returned."""
@@ -44,8 +44,11 @@ class Proc:
             return Result(0, "", "", argv)
         self.log.debug("run: " + " ".join(shown))
         try:
+            # stdin is never inherited: a child must not read the operator's terminal or
+            # the `curl | bash` pipe behind our back
             cp = subprocess.run(
                 list(argv), input=input, env=env, timeout=timeout,
+                stdin=subprocess.DEVNULL if input is None else None,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True,
             )
@@ -55,22 +58,25 @@ class Proc:
         except subprocess.TimeoutExpired as exc:
             self.log.debug(f"timeout after {timeout}s: {' '.join(shown)}")
             return Result(124, exc.stdout or "", (exc.stderr or "") + "\n[timeout]", argv)
-        if cp.stdout:
+        if cp.stdout and not quiet_output:
+            # quiet_output: the command prints secret material (a hash, a file of secrets)
             self.log.debug("stdout: " + self.log.redactor.scrub(cp.stdout.strip()[:2000]))
         if cp.returncode != 0 and cp.stderr:
             self.log.debug("stderr: " + self.log.redactor.scrub(cp.stderr.strip()[:2000]))
         return Result(cp.returncode, cp.stdout or "", cp.stderr or "", argv)
 
-    def run_interactive(self, argv, *, env: dict = None, mutating: bool = True) -> int:
+    def run_interactive(self, argv, *, env: dict = None, mutating: bool = True,
+                        stdin=None) -> int:
         """Run a command inheriting the terminal (stdin/stdout/stderr), for flows the user
-        must drive directly - e.g. `docker login` rendering its own device-code prompt."""
+        must drive directly - ex; `docker login` rendering its own device-code prompt.
+        `stdin` lets the caller hand over /dev/tty when our own stdin is a pipe."""
         shown = " ".join(argv)
         if self.dry_run and mutating:
             self.log.detail("[dry-run] would run interactively: " + shown)
             return 0
         self.log.debug("interactive: " + shown)
         try:
-            cp = subprocess.run(list(argv), env=env)
+            cp = subprocess.run(list(argv), env=env, stdin=stdin)
             return cp.returncode
         except FileNotFoundError:
             return 127

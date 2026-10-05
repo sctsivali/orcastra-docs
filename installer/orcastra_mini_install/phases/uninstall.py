@@ -3,8 +3,8 @@ Vault raft/PKI, Redis) are kept unless --purge-volumes is given with an explicit
 The Vault keys file is never auto-deleted - losing it orphans the encrypted Vault data."""
 import os
 
-from ..errors import AbortByUser
-from ..fsutil import backup_path
+from orcastra_core.errors import AbortByUser
+from orcastra_core.fsutil import backup_path
 
 TITLE = "Uninstall"
 

@@ -3,8 +3,8 @@ any FAIL. Missing Docker is only a WARN (phase 2 installs it). Warnings don't bl
 import os
 import shutil
 
-from ..errors import PreflightError
-from ..netutil import tcp_port_free
+from orcastra_core.errors import PreflightError
+from orcastra_core.netutil import tcp_port_free
 
 TITLE = "Preflight checks"
 
@@ -80,7 +80,10 @@ def run(ctx):
         add("RAM", "PASS" if ram >= 4 else "WARN", f"{ram:.1f} GiB",
             None if ram >= 4 else "4 GiB recommended for the full stack.")
 
-    free_gib = shutil.disk_usage(ctx.install_dir).free / 1024 ** 3
+    probe = ctx.install_dir
+    while not os.path.isdir(probe) and os.path.dirname(probe) != probe:
+        probe = os.path.dirname(probe)  # dry-run: the install dir may not exist yet
+    free_gib = shutil.disk_usage(probe).free / 1024 ** 3
     if free_gib < 5:
         add("Disk", "FAIL", f"{free_gib:.1f} GiB free", "Need at least 10 GiB free for images + volumes.")
     else:

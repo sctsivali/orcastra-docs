@@ -2,7 +2,7 @@
 the official Docker apt repo (docs.docker.com/engine/install) after confirmation."""
 import shutil
 
-from ..errors import AbortByUser, DockerError
+from orcastra_core.errors import AbortByUser, DockerError
 
 TITLE = "Ensure Docker + Compose"
 
@@ -54,6 +54,9 @@ def run(ctx):
 
     _install_docker(ctx, sudo, osid, codename)
 
+    if ctx.dry_run:
+        ctx.log.detail("[dry-run] would check that the freshly installed Docker answers")
+        return
     if not _docker_ok(ctx):
         raise DockerError("Docker still not reachable after install.",
                           remediation="Check 'systemctl status docker' and your permissions "
