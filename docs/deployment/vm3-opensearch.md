@@ -1179,28 +1179,101 @@ cat certs/root-ca.pem    # public, safe to copy
 
 ## Step 12: Import Dashboard Templates
 
-### Install Git and Create Script
+<!-- Maintainers: the five files under docs/assets/opensearch-dashboards/ are copied from
+     orcastra-cmp (config/opensearch-dashboards/*.ndjson and scripts/setup_opensearch_dashboards.sh,
+     at f5b8986). When a dashboard changes, replace the file and regenerate SHA256SUMS in the same
+     commit: `cd docs/assets/opensearch-dashboards && sha256sum *.ndjson setup_opensearch_dashboards.sh > SHA256SUMS`.
+     The copy-and-paste blocks below include the files at build time, so they never drift. -->
 
-```bash
-apt update && apt install git -y
-```
-
-Create the dashboard import script and the ndjson template files. The script creates index patterns and imports four pre-built dashboards:
+Import four pre-built dashboards and their index patterns:
 
 - **Orcastra Logs Overview**, combined view of all log types
 - **Orcastra Access Logs**, HTTP request monitoring and latency tracking
 - **Orcastra Activity & Audit Logs**, security compliance and user activity
 - **Vault Security Audit**, vault operations and secret access patterns
 
-!!! info "Dashboard Templates"
-    The four ndjson files contain pre-configured visualizations and dashboard layouts. They are too large to include inline - download them from the [orcastra-cmp repository](https://github.com/sctsivali/orcastra-cmp) under `config/opensearch-dashboards/`, or copy them from your deployment package.
+You need five files: the import script `setup_opensearch_dashboards.sh` and four ndjson dashboard
+exports in `config/opensearch-dashboards/`. Get them either way below; both give byte-identical
+files.
 
-Place the following files in `config/opensearch-dashboards/`:
+```bash
+cd ~/orcastra
+mkdir -p config/opensearch-dashboards
+```
 
-- `access-logs-dashboard-v3.ndjson`
-- `audit-logs-dashboard-v3.ndjson`
-- `logs-overview-dashboard.ndjson`
-- `vault-audit-dashboard.ndjson`
+=== "Download"
+
+    The files are published with this documentation. Download them and verify the checksums:
+
+    ```bash
+    cd ~/orcastra
+    BASE="https://docs.orcastra.io/en/latest/assets/opensearch-dashboards"
+    curl -fsSLO "$BASE/setup_opensearch_dashboards.sh"
+    curl -fsSLO "$BASE/SHA256SUMS"
+    for f in access-logs-dashboard-v3 audit-logs-dashboard-v3 logs-overview-dashboard vault-audit-dashboard; do
+      curl -fsSL -o "config/opensearch-dashboards/$f.ndjson" "$BASE/$f.ndjson"
+    done
+    (cp setup_opensearch_dashboards.sh config/opensearch-dashboards/ && cd config/opensearch-dashboards \
+      && sha256sum -c ../../SHA256SUMS && rm setup_opensearch_dashboards.sh)
+    ```
+
+    Every line must end in `OK`. A failed check means the download was incomplete: run it again.
+
+=== "Copy and paste"
+
+    For a VM without internet access. Expand each file, copy the whole block with the copy button
+    in its top-right corner, and paste it into the VM 3 shell (in `~/orcastra`). Each block writes
+    one complete file (the `sed` drops the blank line the page adds before the closing marker).
+
+    ??? example "Import script: `./setup_opensearch_dashboards.sh`"
+
+        ```bash
+        sed '${/^$/d}' > ./setup_opensearch_dashboards.sh << 'ORCASTRA_EOF'
+        --8<-- "assets/opensearch-dashboards/setup_opensearch_dashboards.sh"
+        ORCASTRA_EOF
+        ```
+
+    ??? example "Orcastra Access Logs: `config/opensearch-dashboards/access-logs-dashboard-v3.ndjson`"
+
+        ```bash
+        sed '${/^$/d}' > config/opensearch-dashboards/access-logs-dashboard-v3.ndjson << 'ORCASTRA_EOF'
+        --8<-- "assets/opensearch-dashboards/access-logs-dashboard-v3.ndjson"
+        ORCASTRA_EOF
+        ```
+
+    ??? example "Orcastra Activity & Audit Logs: `config/opensearch-dashboards/audit-logs-dashboard-v3.ndjson`"
+
+        ```bash
+        sed '${/^$/d}' > config/opensearch-dashboards/audit-logs-dashboard-v3.ndjson << 'ORCASTRA_EOF'
+        --8<-- "assets/opensearch-dashboards/audit-logs-dashboard-v3.ndjson"
+        ORCASTRA_EOF
+        ```
+
+    ??? example "Orcastra Logs Overview: `config/opensearch-dashboards/logs-overview-dashboard.ndjson`"
+
+        ```bash
+        sed '${/^$/d}' > config/opensearch-dashboards/logs-overview-dashboard.ndjson << 'ORCASTRA_EOF'
+        --8<-- "assets/opensearch-dashboards/logs-overview-dashboard.ndjson"
+        ORCASTRA_EOF
+        ```
+
+    ??? example "Vault Security Audit: `config/opensearch-dashboards/vault-audit-dashboard.ndjson`"
+
+        ```bash
+        sed '${/^$/d}' > config/opensearch-dashboards/vault-audit-dashboard.ndjson << 'ORCASTRA_EOF'
+        --8<-- "assets/opensearch-dashboards/vault-audit-dashboard.ndjson"
+        ORCASTRA_EOF
+        ```
+
+    Then confirm all five files are complete; each line must end in `OK`:
+
+    ```bash
+    cd ~/orcastra/config/opensearch-dashboards
+    cp ../../setup_opensearch_dashboards.sh . && sha256sum -c << 'EOF'
+    --8<-- "assets/opensearch-dashboards/SHA256SUMS"
+    EOF
+    rm setup_opensearch_dashboards.sh; cd ~/orcastra
+    ```
 
 Run the import:
 
