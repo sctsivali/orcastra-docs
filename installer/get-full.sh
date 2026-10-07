@@ -12,12 +12,12 @@
 # ORCASTRA_INSTALLER_PYZ=/path/to/orcastra-full-install.pyz.
 set -euo pipefail
 
-PYZ_URL="${ORCASTRA_INSTALLER_URL:-https://github.com/sctsivali/orcastra-docs/releases/download/installer-full-v1.0.0-RC1/orcastra-full-install.pyz}"
+PYZ_URL="${ORCASTRA_INSTALLER_URL:-https://github.com/sctsivali/orcastra-docs/releases/download/installer-full-v1.0.0-RC2/orcastra-full-install.pyz}"
 SHA_URL="${ORCASTRA_INSTALLER_SHA_URL:-${PYZ_URL}.sha256}"
 LOCAL_PYZ="${ORCASTRA_INSTALLER_PYZ:-}"   # skip download, use this local zipapp
 # Expected digest of the default PYZ_URL, pinned here so a tampered release asset is caught
 # even when its .sha256 neighbour was replaced too. Empty when PYZ_URL is overridden.
-PINNED_SHA256="16bce6c402bfda9b3241b0b5371da53ce4ebffca3d1b2603e6f59314465f1087"
+PINNED_SHA256="9a1ce47521a59afd4e5520472dd9c2b536c4634607dbcfc65fd67754f0adf6e6"
 if [ -n "${ORCASTRA_INSTALLER_URL:-}" ]; then PINNED_SHA256=""; fi   # an override is checked against its .sha256
 
 say() { printf '  %s\n' "$*"; }

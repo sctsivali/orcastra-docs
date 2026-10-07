@@ -12,6 +12,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from orcastra_core.errors import InstallError
+from orcastra_core.retry import wait_until
 
 from . import topology as T
 from .httpapi import Client, HttpError
@@ -96,6 +97,19 @@ def _upsert(c: Client, path: str, key: Dict[str, str], body: Dict[str, Any], pk:
     return c.patch(f"{path}{row[pk]}/", body)
 
 
+def _blueprint_object(c: Client, path: str, what: str, **query: str) -> Dict[str, Any]:
+    """Objects from Authentik's default blueprints, which the worker applies a few minutes
+    after a fresh start: wait for them instead of failing on the first look."""
+    found: List[Optional[Dict[str, Any]]] = []
+    wait_until(lambda: found.append(_one(c, path, **query)) or found[-1] is not None,
+               timeout=600, interval=10)
+    if not found or found[-1] is None:
+        raise InstallError(f"Authentik {what} is still missing after 10 minutes.",
+                           remediation="Check `docker compose logs worker` on orca-authentik "
+                                       "(the default blueprints), then re-run the installer.")
+    return found[-1]
+
+
 def configure(ctx, token: str) -> Dict[str, Any]:
     """Groups, provider, application and the role-sync service account. Returns pks."""
     c = api(ctx, token)
@@ -110,17 +124,11 @@ def configure(ctx, token: str) -> Dict[str, Any]:
     flows = {}
     for field, slug in (("authorization_flow", "default-provider-authorization-implicit-consent"),
                         ("invalidation_flow", "default-provider-invalidation-flow")):
-        row = _one(c, "/flows/instances/", slug=slug)
-        if row is None:
-            raise InstallError(f"Authentik flow {slug} is missing (blueprints not applied yet?)")
-        flows[field] = row["pk"]
+        flows[field] = _blueprint_object(c, "/flows/instances/", f"flow {slug}", slug=slug)["pk"]
     mappings = []
     for scope in SCOPES:
-        row = _one(c, "/propertymappings/provider/scope/",
-                   managed=f"goauthentik.io/providers/oauth2/scope-{scope}")
-        if row is None:
-            raise InstallError(f"Authentik default scope mapping for {scope} is missing")
-        mappings.append(row["pk"])
+        mappings.append(_blueprint_object(c, "/propertymappings/provider/scope/", f"scope mapping {scope}",
+                                          managed=f"goauthentik.io/providers/oauth2/scope-{scope}")["pk"])
     key = _one(c, "/crypto/certificatekeypairs/", name=SIGNING_KEY)
     if key is None:
         key = c.post("/crypto/certificatekeypairs/generate/",
