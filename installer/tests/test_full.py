@@ -253,6 +253,21 @@ class Rendering(unittest.TestCase):
         self.assertIn("vm.max_map_count", ud)
         self.assertNotIn("vm.max_map_count", cloudinit.user_data("k", vm=False))
 
+    def test_authentik_waits_for_blueprint_objects(self):
+        from orcastra_core import retry
+        answers = iter([None, None, {"pk": 7}])
+        orig = (authentik_api._one, authentik_api.wait_until)
+        try:
+            authentik_api._one = lambda c, path, **q: next(answers)
+            authentik_api.wait_until = lambda pred, timeout, interval: retry.wait_until(pred, timeout=5, interval=0.01)
+            self.assertEqual(authentik_api._blueprint_object(None, "/flows/instances/", "flow x", slug="x"), {"pk": 7})
+            authentik_api._one = lambda c, path, **q: None
+            authentik_api.wait_until = lambda pred, timeout, interval: retry.wait_until(pred, timeout=0.05, interval=0.01)
+            with self.assertRaises(InstallError):
+                authentik_api._blueprint_object(None, "/flows/instances/", "flow x", slug="x")
+        finally:
+            authentik_api._one, authentik_api.wait_until = orig
+
     def test_authentik_shell_code_compiles(self):
         code = authentik_api._SHELL.format(set_password="True", password=json.dumps("p'w\"x"),
                                            email=json.dumps("a@b.co"), ident=json.dumps("t"),
