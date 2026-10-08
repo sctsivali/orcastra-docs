@@ -30,7 +30,7 @@ In **Settings > Integrations**:
 
 - Each API key card says how many organizations the key owns and lists their slugs. A partner sees only the organizations it belongs to; the rest are counted as "you cannot see".
 - An owner key inside its expiry warning window shows **Owner Key Expiring** and the date to transfer its organizations by.
-- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state.
+- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state. A partner sees the owner key's name and state only for organizations they are a partner of. For an organization they belong to otherwise, for example as a tenant, the owner state reads **Not Shown**.
 
 | Owner state | Meaning |
 |---|---|
@@ -43,7 +43,7 @@ In **Settings > Integrations**:
 
 Administrators also see a callout counting the organizations whose owner no longer works.
 
-The same information is in the API: `GET /api/v1/integrations/organizations` returns `owner_key_name`, `owner_key_state`, `owner_key_expires_at`, `owner_key_expiry_state` and `cluster_ids` for each organization, and `GET /api/v1/integrations/api-keys` returns `owned_organization_count`, `owned_organization_slugs` and `owned_organization_hidden_count` for each key.
+The same information is in the API: `GET /api/v1/integrations/organizations` returns `owner_key_name`, `owner_key_state`, `owner_key_expires_at`, `owner_key_expiry_state` and `cluster_ids` for each organization, and `GET /api/v1/integrations/api-keys` returns `owned_organization_count`, `owned_organization_slugs` and `owned_organization_hidden_count` for each key. The four `owner_key_*` fields are `null` unless the caller is an administrator or one of that organization's partners.
 
 ---
 
@@ -51,19 +51,23 @@ The same information is in the API: `GET /api/v1/integrations/organizations` ret
 
 Rotate the secret whenever a key's secret may have leaked, or on your regular schedule. The key ID stays, so every organization the key owns keeps syncing once OrcaHub has the new secret.
 
-1. In **Settings > Integrations**, choose **Rotate Secret** on the key's card. The control appears on active keys that are not an add-on's credential.
+1. In **Settings > Integrations**, choose **Rotate Secret** on the key's card, type the key's name (or its ID, for a key without a name) to confirm, and choose **Rotate Secret**. The control appears on active keys that are not an add-on's credential.
 2. Copy the new secret from the dialog. It is shown once.
 3. Update the OrcaHub connection with the new secret.
 
-The previous secret stops working immediately, on every backend worker. Until OrcaHub has the new secret, its syncs are refused with `401`.
+The previous secret stops working at once on every backend worker while Redis is reachable: the rotation publishes the revocation there, and each worker checks it before trusting its cached copy of the key. Without Redis, a worker that cached the old secret keeps accepting it for up to about 30 seconds (`ORCASTRA_API_KEY_CACHE_TTL`), and a request already in flight completes either way. Until OrcaHub has the new secret, its syncs are refused with `401`.
 
-Rotation also clears the key's stored callback URL. The callbacks Orcastra sends to OrcaHub carry the key's secret, and a URL set by whoever held a leaked secret would otherwise receive the new one. The OrcaHub connection stores its URL again on its first sync with the new secret. Until then, Orcastra sends no callbacks for the key, and **Refresh organizations** answers `400` "No callback URL configured".
+Callbacks follow the secret. Every request Orcastra makes to OrcaHub carries the key's credential: the member updates and the lifecycle webhook carry its secret, and **Refresh organizations** carries its hash. So Orcastra keeps the callback URL a sync stores together with a tag of the secret that sync used, and uses the URL only while that secret is still the key's secret. A rotation also clears the stored URL. A sync still running with the old secret cannot store a URL after the rotation, and a URL stored with the old secret never receives the new one. The OrcaHub connection stores its URL again on its first sync with the new secret. Until then, Orcastra sends no callbacks for the key, and **Refresh organizations** answers `400` "No callback URL is set for this API key's current secret".
+
+!!! note "After upgrading"
+    A callback URL stored by a release without this tag is not used. Each key's callbacks and **Refresh organizations** resume after its next sync, about 5 minutes on OrcaHub's default schedule.
 
 Who may rotate:
 
 - An administrator may rotate any key.
-- A partner who manages the key may rotate it when the key owns no OrcaHub organization, or when the partner runs at least one of the organizations it owns (created it, or is one of its partners). This applies to the key's creator too.
-- A partner who did not create the key also needs every cluster the key grants to be within their access and, on a cluster another organization also holds, every project it names to be one they can see.
+- A partner who manages the key may rotate it only when every cluster the key grants is within their access. This applies to the key's creator too.
+- When the key owns OrcaHub organizations, the partner must also be one of the current partners of at least one of them. Having created the key, or an organization, does not count. This applies to the key's creator too, so a creator who has left the organizations the key owns needs an administrator.
+- A partner who did not create the key also needs, on a cluster another organization also holds, every project the key names to be one they can see.
 
 Anyone else gets `403` (or `404` for a key they cannot manage), and a refused rotation is recorded in the audit log.
 
@@ -79,7 +83,7 @@ The response carries `api_key_id` (unchanged) and `api_key_secret` (new). A revo
 A `503` answer says which of these happened:
 
 - The callback URL could not be cleared, or the organizations the key owns could not be checked: nothing changed, and the old secret still works. Try again.
-- The rotation did not confirm, or could not confirm the callback URL was cleared afterwards: a new secret may already be stored, and it was not shown. Rotate again before using the key.
+- The rotation did not confirm: a new secret may already be stored, and it was not shown. Rotate again before using the key.
 
 !!! warning "Do not replace a key to rotate it"
     Creating a new key for the same OrcaHub connection gives it a new key ID. The organizations stay owned by the old key, so every sync from the new key is refused for them until an administrator transfers them.
@@ -136,6 +140,14 @@ In the dashboard, **Revoke** and **Delete** on an owner key open **Transfer Owne
 Uninstalling an add-on whose credential owns organizations is refused the same way. Suspend the add-on to stop it at once, and transfer or delete its organizations before uninstalling.
 
 Each refusal is recorded on the refused action (for example `integration.api_key.revoke`) with result `denied` and error code `key_owns_organizations`. The record names the same organizations the response did, and counts the rest.
+
+### Withdrawing tenant.provision asks first
+
+Withdrawing `tenant.provision` from a key that owns an active OrcaHub organization is not refused, because an operator may want it, but it is not silent either. Without it, the key still syncs those organizations and their members, but provisioning buyer dashboard access for them stops: an order completed in OrcaHub no longer gives its buyer access in Orcastra, and no other key may provision for an organization this key owns.
+
+`PUT /api/v1/integrations/api-keys/<key_id>/capabilities` answers `409` with `error: provisioning_would_stop`. The response names the consequence and the organizations you may see, and counts the rest. Nothing changes. The same request with `"force": true` withdraws it. Its record on `integration.api_key.capabilities.update` carries `forced: true` and the IDs of the owned organizations you may see, with the full and hidden counts.
+
+In the dashboard, **Edit Capabilities** on the key's card shows the consequence when you save, and **Withdraw Anyway** confirms. The usual rules for who may edit the key apply. `inventory.read` and `org.sync` stay refused as above, with or without `force`.
 
 !!! note "The add-on reconcile sweep"
     The sweep that revokes add-on credentials no installation claims, or whose organization reaches no cluster any more, still revokes them: such a credential must stop. Its audit record then names the organizations the revocation leaves frozen, so an administrator can transfer them.
