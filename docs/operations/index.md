@@ -12,6 +12,14 @@ This section covers post-deployment operations: domain configuration, networking
 
     [:octicons-arrow-right-24: Upgrading](upgrading.md)
 
+-   :material-key-chain:{ .lg .middle } **Integration Keys and Ownership**
+
+    ---
+
+    Rotate a key's secret, move an organization to another key, and recover a frozen one
+
+    [:octicons-arrow-right-24: Integration Keys](integration-keys.md)
+
 -   :material-robot:{ .lg .middle } **ORCA Agent Installer**
 
     ---
