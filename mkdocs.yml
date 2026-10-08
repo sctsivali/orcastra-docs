@@ -159,6 +159,7 @@ nav:
   - Operations:
       - operations/index.md
       - Upgrading a Deployment: operations/upgrading.md
+      - Integration Keys & Ownership: operations/integration-keys.md
       - ORCA Agent Installer: operations/orca-agent-install.md
       - OrcaHub Federation (Partner SSO): operations/orcahub-federation-sso.md
       - Domain Setup (Cloudflare): operations/domain-setup.md
