@@ -1,6 +1,6 @@
 # Integration Keys and Organization Ownership
 
-**Every OrcaHub organization synced into Orcastra CMP is owned by exactly one integration key. Only that key can keep it in sync, so rotate a key's secret instead of replacing the key, and move an organization to another key before you end the one that owns it.**
+**Every OrcaHub organization synced into Orcastra CMP is owned by an integration key, or, where an administrator has turned on several owner keys, by a set of them. Only an owner key can keep it in sync, so rotate a key's secret instead of replacing the key, and make sure another key owns an organization before you end the one that owns it.**
 
 An OrcaHub connection authenticates to Orcastra CMP with an integration key: a public key ID (`oak_...`) and a secret (`oas_...`). The key ID is what Orcastra records as the owner of every organization that connection syncs. This page explains what ownership controls, how to rotate a secret without breaking it, how an administrator moves an organization to another key, and how to recover an organization whose owner key stopped working.
 
@@ -152,6 +152,86 @@ In the dashboard, **Edit Capabilities** on the key's card shows the consequence 
 
 !!! note "The add-on reconcile sweep"
     The sweep that revokes add-on credentials no installation claims, or whose organization reaches no cluster any more, still revokes them: such a credential must stop. Its audit record then names the organizations the revocation leaves frozen, so an administrator can transfer them.
+
+---
+
+## Several owner keys per organization
+
+With `INTEGRATION_MULTI_OWNER_ENABLED=true` (off by default; needs a restart), an organization can be owned by up to five keys at once. Every key in its owner set may sync it, update its members and policies and provision tenant access for it. One of them is the **primary**: the key Orcastra calls OrcaHub back with. A provider with two OrcaHub connections to the same control plane can then use either one, and ending one key no longer freezes the organization.
+
+A key joins an owner set only by being vouched for: by an owner key that also holds the new key's secret (two-key enrollment, below), or by an administrator. Any key outside the set is refused exactly as before. While the setting is off, the routes below answer `404` before they authenticate the caller or read the body, `validate` reports no features, and every organization keeps the single owner it had.
+
+Co-ownership does not change who manages a key. Who may read, revoke, delete, edit or rotate a key still follows the organizations the key claimed, was provisioned for or was transferred to, as with a single owner. A key that was enrolled or added by an administrator owns the organization but does not put it on its minter's side, so the partner who provisioned an organization cannot manage a key that the organization's founder enrolled there.
+
+### What changes when a key ends
+
+Revoking, deleting or uninstalling a key, or withdrawing its `inventory.read` or `org.sync`, is refused only for organizations where it is the **only owner able to sync**: an active OrcaHub key holding both capabilities. Where another such owner exists, the end goes through: the key leaves those owner sets (revoke, delete, uninstall) or stays in them without being primary (a withdrawn capability), and the oldest able owner becomes the primary in the same step. If another owner's record cannot be read, or the owner sets cannot be saved, nothing changes and the answer is `503`. Withdrawing `tenant.provision` asks first only for organizations no other owner key provisions for.
+
+The owner sets are checked before the key is changed in Vault. If the database then fails to save them after the key was changed, the answer is `503` with "The key was changed, but the organizations it owns could not be updated." The key is already revoked, deleted or narrowed and stops working at once. Finish the change in **Synced Organizations > Owner Keys** on each organization the key owned: remove the key, or make another key the primary.
+
+Each change to an owner set is recorded as `integration.organization.owner.add`, `.remove` or `.primary`, with the set before and after. An administrator's **Transfer Owner** still replaces the whole set with the new key; its answer lists the co-owners it removed (`removed_owner_key_ids`).
+
+### Manage owner keys (administrators)
+
+In **Synced Organizations**, the row action **Owner Keys** lists the set with its primary and each key's state, and offers **Add Owner Key**, **Make Primary** and **Remove**, each with a reason for the audit record. The last owner cannot be removed; use **Transfer Owner** instead. The same in the API, all administrator only:
+
+| Method | Path | Body | Refusals |
+|---|---|---|---|
+| POST | `/api/v1/integrations/organizations/<org_id>/owner-keys` | `{"api_key_id", "reason"}` | `409` the transfer codes above, `409 owner_set_full`, `409 organization_unclaimed` |
+| DELETE | `/api/v1/integrations/organizations/<org_id>/owner-keys/<key_id>?reason=...` | | `409 last_owner`, `409 no_able_owner`, `503` |
+| PUT | `/api/v1/integrations/organizations/<org_id>/primary-key` | `{"api_key_id", "reason"}` | `409 key_not_an_owner`, the transfer codes above |
+
+Each answers `{"organization_id", "organization_slug", "external_id", "primary_key_id", "owner_key_ids", "changed"}`. `GET /api/v1/integrations/organizations` lists each organization's `owner_keys` (key ID, name, state, expiry, whether it is the primary, how it joined) under the same visibility rule as the `owner_key_*` fields, and each key in `GET /api/v1/integrations/api-keys` carries `sole_owned_organization_count`.
+
+### Two-key enrollment (integrations)
+
+An integration that holds an owner key and a second key, as OrcaHub holds every connection's key, can make the second one a co-owner itself. All three calls take the usual key headers; `validate` and `whoami` report the feature `organization_owner_keys.v1` while it is available.
+
+`GET /api/v1/integrations/external/organizations/<external_id>/owner-keys` (`inventory.read`) tells the calling key where it stands, and writes nothing:
+
+```json
+{"status": "owner", "primary_key_id": "oak_...", "owner_key_ids": ["oak_...", "oak_..."]}
+```
+
+`status` is `owner`, `not_owner` or `unclaimed` (also for an organization Orcastra has not seen). Only an owner is told the primary and the set.
+
+`POST /api/v1/integrations/external/organizations/owner-keys` (`org.sync`), authenticated as an owner key of the organization:
+
+```json
+{"organization_external_id": "<uuid>", "new_key_id": "oak_...", "new_key_secret": "oas_..."}
+```
+
+answers `{"organization_external_id", "primary_key_id", "owner_key_ids", "added"}`. A key already in the set answers `"added": false`. The new key's secret is checked and discarded; it is never stored, logged, recorded or repeated in an error, including a `422`. The primary does not change.
+
+Orcastra first checks that the calling key owns the organization. Only then does it read anything about the new key. A key that is not an owner, an organization Orcastra does not know and an organization nobody owns yet all get the same `403 not_an_owner`.
+
+| Status | `error` | Cause |
+|---|---|---|
+| 403 | `not_an_owner` | The calling key does not own the organization, the organization does not exist or has no owner, or the calling key can no longer own it (ended, missing a sync capability, an add-on credential). |
+| 403 | `new_key_unverified` | No such key, or the secret is wrong (one sentence for both). After 5 failures for the same calling key and new key, that pair is locked out of enrollment for an hour. |
+| 403 | `new_key_outside_organization` | The new key was minted by someone who did not mint the calling key, did not create the organization and has not been a partner of it for at least 24 hours. An administrator can still add it. |
+| 409 | `owner_set_full` | The organization already has five owner keys. |
+| 409 | `target_key_*` | The new key could not own the organization (the transfer codes above). |
+| 422 | `same_key` | The new key is the calling key. |
+| 422 | | The body is not valid. Each error names the field and the problem, never the value. |
+| 429 | `rate_limited` | More than 5 enrollments a minute or 30 a day for the calling key, or for the organization. Only an owner's attempts count toward the organization's limit. |
+| 503 | | Vault could not be read. Nothing changed and nothing counts as a failure; try again. |
+
+`DELETE /api/v1/integrations/external/organizations/<external_id>/owner-keys/self` (`org.sync`) takes the calling key out of the set and answers `{"removed", "primary_key_id", "owner_key_ids"}` (`"removed": false`, with no set, for a key that is not an owner). If the key was the primary, the oldest owner able to sync becomes the primary. It answers `409 last_owner` while no other owner can sync the organization.
+
+### If an owner key leaks
+
+A co-owner survives the rotation of another key, so after a leak check the whole set, not only the leaked key:
+
+1. Rotate the leaked key's secret (or revoke it, if another able owner carries its organizations).
+2. In **Synced Organizations > Owner Keys**, review every organization the key owned. Remove any owner key you do not recognize, and rotate any you are unsure of.
+3. Search the audit log for `integration.organization.owner.add` with `trigger: enroll` and the leaked key as `proof_key_id`: those are the keys it vouched for.
+4. Review the organization's partners. An owner key can write members, and a key minted by a partner can be enrolled once that partner row is 24 hours old. Remove any partner you do not recognize.
+
+!!! warning "Known limits"
+    - Orcastra does not record which key wrote a partner row, so enrollment relies on the row's age instead. Changing a member's role keeps the date they joined. A leaked owner key can therefore promote a member who joined more than 24 hours ago to partner and, if that member can mint integration keys, enroll one of their keys right away. Step 4 above covers this.
+    - Orcastra does not tell an organization's partners when a key joins its owner set. The audit record of each enrollment counts the partners (`partner_count`) who would be told.
+    - When the key that first owned an organization leaves its set and an enrolled key becomes the primary, the organization no longer decides who manages keys. Its partners then lose management (read, revoke, delete, rotate) of keys on clusters the organization shares with another party, until an administrator uses **Transfer Owner** to give the organization to that key. This only ever narrows access.
 
 ---
 

@@ -52,6 +52,9 @@ What this credential is installed as, what it reaches, and its resolved settings
 | GET | `/integrations/whoami` | none |
 | POST | `/integrations/validate` | none, credentials go in the body |
 
+A verified answer from either carries `features`, the optional contracts this installation supports
+(for example `organization_owner_keys.v1`), or `null` when it supports none.
+
 ### Inventory
 
 | Method | Path | Capability |
@@ -100,6 +103,12 @@ Resumable uploads. `HEAD` reports how much arrived, so an interrupted transfer c
 | GET | `/integrations/external/policies` | `tenant.provision` |
 | POST | `/integrations/provision-tenant-access` | `tenant.provision` |
 | POST | `/integrations/revoke-tenant-access` | `tenant.provision` |
+| GET | `/integrations/external/organizations/{external_id}/owner-keys` | `inventory.read` |
+| POST | `/integrations/external/organizations/owner-keys` | `org.sync` |
+| DELETE | `/integrations/external/organizations/{external_id}/owner-keys/self` | `org.sync` |
+
+The three owner-key endpoints answer `404`, before the key is checked, unless the installation
+reports the `organization_owner_keys.v1` feature (see [several owner keys](../operations/integration-keys.md#several-owner-keys-per-organization)).
 
 These write access control. They are marked on the consent screen for that reason, and most add-ons should not ask for them.
 
