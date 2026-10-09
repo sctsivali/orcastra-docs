@@ -231,6 +231,7 @@ A co-owner survives the rotation of another key, so after a leak check the whole
 !!! warning "Known limits"
     - Orcastra does not record which key wrote a partner row, so enrollment relies on the row's age instead. Changing a member's role keeps the date they joined. A leaked owner key can therefore promote a member who joined more than 24 hours ago to partner and, if that member can mint integration keys, enroll one of their keys right away. Step 4 above covers this.
     - Orcastra does not tell an organization's partners when a key joins its owner set. The audit record of each enrollment counts the partners (`partner_count`) who would be told.
+    - When the key that first owned an organization leaves its set and an enrolled key becomes the primary, the organization no longer decides who manages keys. Its partners then lose management (read, revoke, delete, rotate) of keys on clusters the organization shares with another party, until an administrator uses **Transfer Owner** to give the organization to that key. This only ever narrows access.
 
 ---
 
