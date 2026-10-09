@@ -30,7 +30,7 @@ In **Settings > Integrations**:
 
 - Each API key card says how many organizations the key owns and lists their slugs. A partner sees only the organizations it belongs to; the rest are counted as "you cannot see".
 - An owner key inside its expiry warning window shows **Owner Key Expiring** and the date to transfer its organizations by.
-- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state. A partner sees the owner key's name and state only when they are a partner of that key's own organization (see [Rotate a secret](#rotate-a-secret-without-changing-the-key-id) for how Orcastra recognizes it). For any other organization they belong to, for example as a tenant, or as the founder of a buyer organization that carries the seller's key, the owner state reads **Not Shown**.
+- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state. A partner sees the owner key's name and state only when they are a partner of that key's own organization (see [Rotate a secret](#rotate-a-secret-without-changing-the-key-id) for how Orcastra recognizes it, which needs a sale through the key). For any other organization they belong to, for example as a tenant, or as the founder of a buyer organization that carries the seller's key, and for every organization of a key before its first sale, the owner state reads **Not Shown** to everyone but administrators.
 
 | Owner state | Meaning |
 |---|---|
@@ -67,7 +67,7 @@ Who may rotate:
 - An administrator may rotate any key.
 - A partner who manages the key may rotate it only when every cluster the key grants is within their access. This applies to the key's creator too.
 - When the key owns OrcaHub organizations, the partner must also be a current partner of the key's own organization, the seller's organization its OrcaHub connection syncs. A partner of a buyer organization the key provisioned does not count, and neither does having created the key or an organization. This applies to the key's creator too, so a creator who has left the seller's organization needs an administrator, also when they later buy from it.
-- Orcastra recognizes the key's own organization as the oldest organization the key synced. Once anyone has bought through the key, that organization must also hold a cluster one of its own partners registered and the key sold on. If that cannot be shown, for example after the seller's organization was deleted and synced again, only an administrator can rotate the key.
+- Orcastra recognizes the key's own organization only through a sale: it is the oldest organization the key synced, and it must hold a cluster one of its own partners registered, on which the key has provisioned a buyer. Until that can be shown, only an administrator can rotate the key. That includes a new key before its first sale, and a key whose seller organization was deleted and synced again.
 - A partner who did not create the key also needs, on a cluster another organization also holds, every project the key names to be one they can see.
 
 Anyone else gets `403` (or `404` for a key they cannot manage), and a refused rotation is recorded in the audit log.
