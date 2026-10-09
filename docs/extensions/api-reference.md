@@ -107,8 +107,8 @@ Resumable uploads. `HEAD` reports how much arrived, so an interrupted transfer c
 | POST | `/integrations/external/organizations/owner-keys` | `org.sync` |
 | DELETE | `/integrations/external/organizations/{external_id}/owner-keys/self` | `org.sync` |
 
-The three owner-key endpoints answer `404` unless the installation reports the
-`organization_owner_keys.v1` feature (see [several owner keys](../operations/integration-keys.md#several-owner-keys-per-organization)).
+The three owner-key endpoints answer `404`, before the key is checked, unless the installation
+reports the `organization_owner_keys.v1` feature (see [several owner keys](../operations/integration-keys.md#several-owner-keys-per-organization)).
 
 These write access control. They are marked on the consent screen for that reason, and most add-ons should not ask for them.
 
