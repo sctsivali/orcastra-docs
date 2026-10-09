@@ -54,7 +54,7 @@ The wizard asks, offering a default for each:
 6. the host address browsers will use, chosen from the addresses on the host
 7. the host port for each web endpoint (Authentik 9000, CMP 4321, CMP API 8765, OpenSearch Dashboards 5601)
 8. the admin email, and whether to type the `akadmin` password or let the installer generate one
-9. the Orcastra CMP release: `latest` (1.0.0-RC4-hotfix2) or 1.0.0-RC4-hotfix1. Earlier
+9. the Orcastra CMP release: `latest` (1.0.0-RC4-hotfix3), 1.0.0-RC4-hotfix2 or 1.0.0-RC4-hotfix1. Earlier
    releases are not offered, because their frontend healthcheck follows the sign-in redirect
    to the public URL and the frontend restarts in a loop. When Docker Hub carries a newer
    release than the installer knows, the wizard says so
@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/instal
 | `HOST_ADDRESS` | address browsers use |
 | `PORT_AUTHENTIK`, `PORT_CMP`, `PORT_API`, `PORT_LOGS` | host ports of the web endpoints |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `akadmin` email and password (password generated when empty, and only accepted from the answer file, never as a flag) |
-| `CMP_VERSION` | `latest` or a release such as `1.0.0-RC4-hotfix2` |
+| `CMP_VERSION` | `latest` or a release such as `1.0.0-RC4-hotfix3` |
 | `IMAGE` | LXD image for the instances (default `ubuntu:24.04`) |
 | `FIX_HOST_FIREWALL` | `yes`, `no` or `ask`: whether the installer may change host settings, see [Host firewalls](#host-firewalls) |
 
