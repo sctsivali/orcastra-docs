@@ -7,4 +7,4 @@ the four components, the LXD port forwards, an unseal watchdog and an end-to-end
 verification. Re-runs resume where a previous run stopped.
 """
 
-__version__ = "1.0.0-RC2"
+__version__ = "1.0.0-RC3"
