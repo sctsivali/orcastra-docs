@@ -30,7 +30,7 @@ In **Settings > Integrations**:
 
 - Each API key card says how many organizations the key owns and lists their slugs. A partner sees only the organizations it belongs to; the rest are counted as "you cannot see".
 - An owner key inside its expiry warning window shows **Owner Key Expiring** and the date to transfer its organizations by.
-- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state. A partner sees the owner key's name and state only for organizations they are a partner of. For an organization they belong to otherwise, for example as a tenant, the owner state reads **Not Shown**.
+- The **Synced Organizations** panel lists every synced organization with its owner key and the owner's state. A partner sees the owner key's name and state only when they are a partner of that key's own organization (see [Rotate a secret](#rotate-a-secret-without-changing-the-key-id) for how Orcastra recognizes it). For any other organization they belong to, for example as a tenant, or as the founder of a buyer organization that carries the seller's key, the owner state reads **Not Shown**.
 
 | Owner state | Meaning |
 |---|---|
@@ -43,7 +43,7 @@ In **Settings > Integrations**:
 
 Administrators also see a callout counting the organizations whose owner no longer works.
 
-The same information is in the API: `GET /api/v1/integrations/organizations` returns `owner_key_name`, `owner_key_state`, `owner_key_expires_at`, `owner_key_expiry_state` and `cluster_ids` for each organization, and `GET /api/v1/integrations/api-keys` returns `owned_organization_count`, `owned_organization_slugs` and `owned_organization_hidden_count` for each key. The four `owner_key_*` fields are `null` unless the caller is an administrator or one of that organization's partners.
+The same information is in the API: `GET /api/v1/integrations/organizations` returns `owner_key_name`, `owner_key_state`, `owner_key_expires_at`, `owner_key_expiry_state` and `cluster_ids` for each organization, and `GET /api/v1/integrations/api-keys` returns `owned_organization_count`, `owned_organization_slugs` and `owned_organization_hidden_count` for each key. The four `owner_key_*` fields are `null` unless the caller is an administrator or a partner of the owner key's own organization.
 
 ---
 
@@ -66,7 +66,8 @@ Who may rotate:
 
 - An administrator may rotate any key.
 - A partner who manages the key may rotate it only when every cluster the key grants is within their access. This applies to the key's creator too.
-- When the key owns OrcaHub organizations, the partner must also be one of the current partners of at least one of them. Having created the key, or an organization, does not count. This applies to the key's creator too, so a creator who has left the organizations the key owns needs an administrator.
+- When the key owns OrcaHub organizations, the partner must also be a current partner of the key's own organization, the seller's organization its OrcaHub connection syncs. A partner of a buyer organization the key provisioned does not count, and neither does having created the key or an organization. This applies to the key's creator too, so a creator who has left the seller's organization needs an administrator, also when they later buy from it.
+- Orcastra recognizes the key's own organization as the oldest organization the key synced. Once anyone has bought through the key, that organization must also hold a cluster one of its own partners registered and the key sold on. If that cannot be shown, for example after the seller's organization was deleted and synced again, only an administrator can rotate the key.
 - A partner who did not create the key also needs, on a cluster another organization also holds, every project the key names to be one they can see.
 
 Anyone else gets `403` (or `404` for a key they cannot manage), and a refused rotation is recorded in the audit log.
