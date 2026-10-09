@@ -128,6 +128,38 @@ Cannot prepare TLS credentials for <cluster>: backend storage
 
 ---
 
+## OrcaHub Integration Issues
+
+### "Owned by a Different Integration Key"
+
+Provisioning for an OrcaHub order answers HTTP 409:
+
+```
+Organization '<slug>' is owned by a different integration key. A key may only provision for organizations it already owns, or ones no key has claimed.
+```
+
+and on every sync from the OrcaHub connection the backend logs:
+
+```
+Refusing sync of organization <slug> (external_id=<uuid>): owned by api key <old key>, caller is <new key>
+Refusing member sync into organization <slug>: owned by api key <old key>, caller is <new key>
+```
+
+The OrcaHub connection now authenticates with a different key than the one that first synced
+the organization, usually because the key was replaced (a new key created, the old one revoked or
+deleted) instead of rotated. Only the owner key may sync an organization, update its members and
+policies, or provision tenant access for it, so the organization stays frozen on the old key.
+
+1. As an administrator, open **Settings > Integrations > Synced Organizations**. The
+   organization's **Owner Key** is the old key, usually with state Revoked, Expired or Missing.
+2. Choose **Transfer Owner** and pick the key the OrcaHub connection uses now.
+3. Wait for the connection's next sync, or trigger one from OrcaHub.
+
+Next time, rotate the key's secret instead of replacing the key: the key ID, and every
+organization it owns, stay. See [Integration Keys and Organization Ownership](integration-keys.md).
+
+---
+
 ## Database Issues
 
 ### Tables Not Created
