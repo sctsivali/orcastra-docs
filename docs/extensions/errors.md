@@ -54,11 +54,11 @@ Anything a tool could not do comes back as a tool result with `isError` set, and
 |---|---|
 | `forbidden` | Stop. The credential lacks a capability, a cluster or a project. `orcastra_whoami` lists what it holds |
 | `invalid_request` | Fix the arguments |
-| `not_found` | Treat as not found |
+| `not_found` | Treat as not found. An operation poll answers this both for an operation LXD has already forgotten and for one in a project this credential does not hold, deliberately the same answer |
 | `conflict` | Narrow the request. An instance name held by two projects needs `cluster_id` and `project` |
 | `overloaded` | Wait the time the text gives, then retry |
 | `cluster_unavailable` | Retry later. Nothing is wrong with the request |
-| `timeout` | The work may still be running. Poll it with `lxd_get_operation` instead of resending |
+| `timeout` | The work may still be running. Poll it with `lxd_get_operation` instead of resending, passing the operation's `project` when the credential is limited to named projects |
 | `operation_failed` | The cluster answered, but not usefully. Report it |
 
 An unknown tool or a method the server does not serve is a JSON-RPC error (`-32601`), not a tool result.
