@@ -911,7 +911,10 @@ paths:
       - Extensions - External
   /integrations/clusters:
     get:
-      description: The clusters in the key's grant, with their live status.
+      description: The clusters in the key's grant. Each row carries `status`, `reason_code`, `reason`
+        and `checked_at` from the last check the server already holds (all null when nothing checked the
+        cluster recently; this read never probes a cluster), and `access`, the level and projects this
+        key holds on it. `unreachable` lists clusters whose registration could not be read.
       operationId: get_integrations_clusters
       parameters:
       - description: Narrow to one cluster
