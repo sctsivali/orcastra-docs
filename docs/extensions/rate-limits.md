@@ -16,6 +16,8 @@ Deployments can change all three, so treat these as the shipped defaults rather 
 
 MCP calls spend the same per-credential budget as REST calls. They are the same credential.
 
+Every answer to a credentialed request carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (seconds until the window resets) whenever the deployment can compute them, MCP responses included, so a client can slow down before it is refused.
+
 ## Handling 429
 
 Back off. A client that retries immediately turns a brief overrun into a sustained one, and the deployment cannot tell the difference between that and an attack.
