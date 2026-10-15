@@ -58,7 +58,7 @@ Anything a tool could not do comes back as a tool result with `isError` set, and
 | `conflict` | Narrow the request. An instance name held by two projects needs `cluster_id` and `project` |
 | `overloaded` | Wait the time the text gives, then retry |
 | `cluster_unavailable` | Retry later. Nothing is wrong with the request |
-| `timeout` | The work may still be running. Poll it with `lxd_get_operation` instead of resending, passing the operation's `project` when the credential is limited to named projects |
+| `timeout` | The work may still be running. Poll it with `lxd_get_operation` instead of resending. `project` may be omitted: the operation's own project decides who may read it |
 | `operation_failed` | The cluster answered, but not usefully. Report it |
 
 An unknown tool or a method the server does not serve is a JSON-RPC error (`-32601`), not a tool result.
