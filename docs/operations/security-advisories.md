@@ -82,9 +82,12 @@ for Partners and Admins:
   Debian, Red Hat or SUSE kernel whose backports are invisible in `uname -r`, or a member that
   could not be read.
 
-The same results appear on the Kernel tab of Inventory > Warnings and through
-`GET /api/v1/security/kernel-advisories`. Tenants do not see them. Each result carries the
-command to run on the host and the date of the advisory data it was judged against.
+The badge opens every member of the cluster with its kernel, verdict and reason. The System tab
+of a cluster's details shows the verdict too, patched included. Exposed and unverified members
+also appear on the Host Kernels tab of Inventory > Warnings, behind a Host Kernels tile on the
+overview's System Alerts card, and through `GET /api/v1/security/kernel-advisories`. Tenants do
+not see any of them. Each result carries the command to run on the host and the date of the
+advisory data it was judged against.
 
 The Full installer's host preflight prints a `Kernel CVE-2026-99999` row. It passes when the
 host can prove the fix and warns otherwise, including when a fixed kernel is installed but not
