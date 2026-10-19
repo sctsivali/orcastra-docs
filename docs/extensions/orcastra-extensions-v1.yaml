@@ -1826,8 +1826,10 @@ paths:
       - lxd.proxy
   /integrations/regions:
     get:
-      description: Return non-sensitive geographic region coordinates for clusters allowed by the API
-        key.
+      description: 'Return non-sensitive geographic region coordinates for clusters allowed by the API
+        key. A region whose id is ''c-'' and a lowercase ISO code stands for the whole country: its city
+        is the country name and its coordinates are a representative point inside the country, not the
+        site.'
       operationId: get_integrations_regions
       parameters:
       - in: header
