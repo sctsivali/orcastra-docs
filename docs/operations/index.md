@@ -60,4 +60,12 @@ This section covers post-deployment operations: domain configuration, networking
 
     [:octicons-arrow-right-24: Troubleshooting](troubleshooting.md)
 
+-   :material-shield-alert:{ .lg .middle } **Security Advisories**
+
+    ---
+
+    Host and platform vulnerabilities that affect a deployment, and how to check and patch
+
+    [:octicons-arrow-right-24: Security Advisories](security-advisories.md)
+
 </div>
