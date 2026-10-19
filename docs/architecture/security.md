@@ -96,6 +96,9 @@ path "pki_int/certs"     { capabilities = ["list"] }
     - TLS between all internal services (Vault, OpenSearch)
     - Disk-level encryption (LUKS) on all VMs
     - OpenSearch encryption at rest plugin
+    - A host kernel that carries current security fixes, booted and not only installed. Check
+      [Security Advisories](../operations/security-advisories.md) for issues in the LXD host
+      kernel that a guest VM can reach
 
 ---
 

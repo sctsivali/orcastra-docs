@@ -165,6 +165,7 @@ nav:
       - Networking & Connectivity: operations/networking.md
       - Verification & Testing: operations/verification.md
       - Troubleshooting: operations/troubleshooting.md
+      - Security Advisories: operations/security-advisories.md
   - Extensions:
       - extensions/index.md
       - What An Add-on Is: extensions/overview.md

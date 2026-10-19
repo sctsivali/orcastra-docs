@@ -20,6 +20,7 @@ The installer runs on the LXD host itself, as root.
 | Python | 3.8 or newer (`python3`), standard library only, nothing to `pip install` |
 | Host tools | `ip`, `ss`, `openssl`, `ssh`, `ssh-keygen` |
 | Virtual machines | `/dev/kvm` on the host. Without it, choose container instances |
+| Host kernel | One that carries the fix for [CVE-2026-99999](../operations/security-advisories.md#cve-2026-99999-guest-to-host-flaw-in-the-host-kernels-ipv4-checksum-path) when the host runs virtual machines. Preflight warns about an unpatched kernel but does not stop the install |
 | Outbound internet | From the instances, for Ubuntu packages, Docker images (Docker Hub, `ghcr.io`) and the HashiCorp and Fluent Bit apt repositories |
 
 Sizing is chosen in the wizard:
