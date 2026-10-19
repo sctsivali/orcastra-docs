@@ -64,6 +64,14 @@ components:
           - type: 'null'
           description: Whole days until expiry, negative once passed, null if it never expires
           title: Expires In Days
+        features:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          description: Optional integration contracts this server supports, such as organization_owner_keys.v1
+          title: Features
         server:
           anyOf:
           - $ref: '#/components/schemas/ServerIdentity'
@@ -136,6 +144,74 @@ components:
           title: Detail
           type: array
       title: HTTPValidationError
+      type: object
+    OwnerKeyEnrollResponse:
+      properties:
+        added:
+          title: Added
+          type: boolean
+        organization_external_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Organization External Id
+        owner_key_ids:
+          items:
+            type: string
+          title: Owner Key Ids
+          type: array
+        primary_key_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Key Id
+      required:
+      - added
+      title: OwnerKeyEnrollResponse
+      type: object
+    OwnerKeySelfRemoveResponse:
+      properties:
+        owner_key_ids:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Owner Key Ids
+        primary_key_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Key Id
+        removed:
+          title: Removed
+          type: boolean
+      required:
+      - removed
+      title: OwnerKeySelfRemoveResponse
+      type: object
+    OwnerKeysResponse:
+      description: Whether the calling key owns an organization, and, only for an owner, the whole set.
+      properties:
+        owner_key_ids:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Owner Key Ids
+        primary_key_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primary Key Id
+        status:
+          description: owner, not_owner or unclaimed
+          title: Status
+          type: string
+      required:
+      - status
+      title: OwnerKeysResponse
       type: object
     ProvisionTenantAccessRequest:
       description: Request from OrcaHub to auto-create tenant access for a provisioned project.
@@ -957,6 +1033,208 @@ paths:
       - Integrations - External
       x-orcastra-capabilities:
       - inventory.read
+  /integrations/clusters/failover:
+    get:
+      description: 'Whether each cluster is clustered, and its automatic healing and offline thresholds
+        and database voter limits, read live. Numbers only: the rest of the server configuration is never
+        returned. A threshold of 0 means automatic healing is off.'
+      operationId: get_integrations_clusters_failover
+      parameters:
+      - description: Narrow to one cluster
+        in: query
+        name: cluster_id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Narrow to one cluster
+          title: Cluster Id
+      - in: header
+        name: X-API-Key-ID
+        required: true
+        schema:
+          title: X-Api-Key-Id
+          type: string
+      - in: header
+        name: X-API-Key-Secret
+        required: true
+        schema:
+          title: X-Api-Key-Secret
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security: *id001
+      summary: Read how the clusters this key may reach recover from a lost member
+      tags:
+      - Integrations - External
+      x-orcastra-capabilities:
+      - inventory.read
+  /integrations/external/organizations/owner-keys:
+    post:
+      description: Authenticated as an owner key of the organization (org.sync). The body names a second
+        key and its secret; when the secret verifies and the key could own the organization, it joins
+        the owner set. Idempotent. 404 unless INTEGRATION_MULTI_OWNER_ENABLED is on.
+      operationId: post_integrations_external_organizations_owner_keys
+      parameters:
+      - in: header
+        name: X-API-Key-ID
+        required: true
+        schema:
+          title: X-Api-Key-Id
+          type: string
+      - in: header
+        name: X-API-Key-Secret
+        required: true
+        schema:
+          title: X-Api-Key-Secret
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                new_key_id:
+                  description: The key that joins the owner set
+                  pattern: ^[A-Za-z0-9_-]{1,128}$
+                  title: New Key Id
+                  type: string
+                new_key_secret:
+                  description: Its secret, proving the caller holds it
+                  format: password
+                  maxLength: 512
+                  minLength: 1
+                  title: New Key Secret
+                  type: string
+                  writeOnly: true
+                organization_external_id:
+                  maxLength: 255
+                  minLength: 1
+                  title: Organization External Id
+                  type: string
+              required:
+              - organization_external_id
+              - new_key_id
+              - new_key_secret
+              title: OwnerKeyEnrollRequest
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerKeyEnrollResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security: *id001
+      summary: Add a key the caller also holds to an organization's owner set
+      tags:
+      - Integrations - External
+      x-orcastra-capabilities:
+      - org.sync
+  /integrations/external/organizations/{external_id}/owner-keys:
+    get:
+      description: Answers owner, not_owner or unclaimed for the calling key. Only an owner is told the
+        primary and every owner key. Writes nothing. 404 unless INTEGRATION_MULTI_OWNER_ENABLED is on.
+      operationId: get_integrations_external_organizations_by_external_id_owner_keys
+      parameters:
+      - in: path
+        name: external_id
+        required: true
+        schema:
+          title: External Id
+          type: string
+      - in: header
+        name: X-API-Key-ID
+        required: true
+        schema:
+          title: X-Api-Key-Id
+          type: string
+      - in: header
+        name: X-API-Key-Secret
+        required: true
+        schema:
+          title: X-Api-Key-Secret
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerKeysResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security: *id001
+      summary: Whether this key owns an organization
+      tags:
+      - Integrations - External
+      x-orcastra-capabilities:
+      - inventory.read
+  /integrations/external/organizations/{external_id}/owner-keys/self:
+    delete:
+      description: The calling key leaves the owner set, and the oldest owner that can still sync becomes
+        the primary if it was. Refused (409 last_owner) while no other owner can sync the organization.
+        404 unless INTEGRATION_MULTI_OWNER_ENABLED is on.
+      operationId: delete_integrations_external_organizations_by_external_id_owner_keys_self
+      parameters:
+      - in: path
+        name: external_id
+        required: true
+        schema:
+          title: External Id
+          type: string
+      - in: header
+        name: X-API-Key-ID
+        required: true
+        schema:
+          title: X-Api-Key-Id
+          type: string
+      - in: header
+        name: X-API-Key-Secret
+        required: true
+        schema:
+          title: X-Api-Key-Secret
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerKeySelfRemoveResponse'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      security: *id001
+      summary: Take the calling key out of an organization's owner set
+      tags:
+      - Integrations - External
+      x-orcastra-capabilities:
+      - org.sync
   /integrations/external/policies:
     get:
       description: Read tenant access policies from Orcastra for OrcaHub pull sync. Requires valid API
@@ -1912,16 +2190,16 @@ paths:
       operationId: post_integrations_sync
       parameters:
       - in: header
-        name: X-API-Key-ID
-        required: true
-        schema:
-          title: X-Api-Key-Id
-          type: string
-      - in: header
         name: X-API-Key-Secret
         required: true
         schema:
           title: X-Api-Key-Secret
+          type: string
+      - in: header
+        name: X-API-Key-ID
+        required: true
+        schema:
+          title: X-Api-Key-Id
           type: string
       requestBody:
         content:
