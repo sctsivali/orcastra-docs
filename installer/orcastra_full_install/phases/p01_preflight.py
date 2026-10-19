@@ -1,6 +1,7 @@
 """Phase 1 - Host preflight. Checks that this machine can drive LXD at all, before any
 question is asked: privileges, the lxc client and daemon, required host tools, and
-whether another Orcastra deployment already lives on this host (one per host in v1)."""
+whether another Orcastra deployment already lives on this host (one per host in v1).
+It also reports whether the host kernel carries the CVE-2026-99999 fix (a warning only)."""
 from __future__ import annotations
 
 import shutil
@@ -9,6 +10,7 @@ import sys
 from orcastra_core.errors import PreflightError
 
 from .. import hostnet
+from .. import kernelcheck
 from .. import topology as T
 
 TITLE = "Host preflight"
@@ -83,10 +85,22 @@ def run(ctx) -> None:
         "present" if hostnet.has_kvm() else "absent (only container instances possible)")
     ctx.facts["kvm"] = hostnet.has_kvm()
 
+    # note: warns, never fails. There is no workaround, so a FAIL would block every host
+    # until its vendor ships a fixed kernel; the row and the link make the risk visible.
+    try:
+        k_status, k_detail = kernelcheck.check_host(osr, vm_capable=hostnet.has_kvm())
+    except Exception as exc:  # noqa: BLE001 - an unreadable kernel is reported, not raised
+        k_status, k_detail = kernelcheck.WARN, f"could not verify: {str(exc)[:120]}"
+    add(f"Kernel {kernelcheck.CVE}", k_status, k_detail)
+    ctx.facts["kernel_advisory"] = {"cve": kernelcheck.CVE, "status": k_status, "detail": k_detail}
+
     width = max(len(r[0]) for r in rows)
     for name, status, detail in rows:
         line = f"{name.ljust(width)}  {detail}"
         {"PASS": ctx.log.ok, "WARN": ctx.log.warn}.get(status, ctx.log.error)(line)
+    if k_status != kernelcheck.PASS:
+        ctx.log.detail(f"Check the host kernel: {kernelcheck.check_command(osr)}")
+        ctx.log.detail(f"Advisory and patch steps: {kernelcheck.DOCS}")
     if fail:
         raise PreflightError("Host preflight failed:\n  - " + "\n  - ".join(fail),
                              remediation="Fix the items above and re-run the installer.")
