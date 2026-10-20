@@ -97,6 +97,15 @@ class Lxd:
     def profile(self, name: str) -> Optional[Dict[str, Any]]:
         return self.query(f"/1.0/profiles/{name}")
 
+    # -- cluster --------------------------------------------------------------------------
+    def cluster_member(self) -> Optional[str]:
+        """This member's name when LXD is clustered (MicroCloud), None on a standalone server."""
+        env = self.server().get("environment") or {}
+        return env.get("server_name") if env.get("server_clustered") else None
+
+    def cluster_members(self) -> List[Dict[str, Any]]:
+        return self.query("/1.0/cluster/members", project="default", params={"recursion": "1"}) or []
+
     # -- instances ------------------------------------------------------------------------
     def instance(self, name: str) -> Optional[Dict[str, Any]]:
         return self.query(f"/1.0/instances/{name}")
@@ -134,9 +143,11 @@ class Lxd:
                           params={"recursion": "1"}) or []
 
     def all_forwards(self) -> List[Dict[str, Any]]:
+        # note: only bridge and ovn networks have forwards; LXD answers an error for others
+        # (a MicroCloud's managed physical uplink, macvlan, sriov) instead of an empty list
         out = []
         for net in self.networks():
-            if net.get("managed"):
+            if net.get("managed") and net.get("type") in ("bridge", "ovn"):
                 for fwd in self.forwards(net["name"]):
                     out.append(dict(fwd, network=net["name"]))
         return out

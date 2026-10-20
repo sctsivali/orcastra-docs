@@ -1,7 +1,8 @@
 name: Installer checks
 
 # Unit tests and docs-parity checks for the Mini and Full installers. Parity matters
-# because both installers deploy config blocks taken from the manual guides.
+# because both installers deploy config blocks taken from the manual guides (and the Full
+# installer the OrcaHub federation policy from its operations guide).
 
 on:
   push:
@@ -10,12 +11,14 @@ on:
       - "installer/**"
       - "docs/mini/quick-start.md"
       - "docs/deployment/**"
+      - "docs/operations/orcahub-federation-sso.md"
       - ".github/workflows/installer.yml"
   pull_request:
     paths:
       - "installer/**"
       - "docs/mini/quick-start.md"
       - "docs/deployment/**"
+      - "docs/operations/orcahub-federation-sso.md"
       - ".github/workflows/installer.yml"
   workflow_dispatch:
 

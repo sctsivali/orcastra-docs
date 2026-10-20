@@ -173,6 +173,7 @@ class _Ctx:
         self.log = _Log()
         self.facts = {}
         self.project = "orcastra"
+        self.cluster_member = None
 
 
 class PreflightKernelRow(unittest.TestCase):

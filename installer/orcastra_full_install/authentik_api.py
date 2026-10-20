@@ -206,17 +206,24 @@ def prove_service_token(ctx, admin_token: str, svc_token: str, groups: Dict[str,
         admin.request("DELETE", f"/core/users/{probe['pk']}/", ok=(204, 404))
 
 
+def as_browser(ctx) -> Client:
+    """Authentik reached directly but addressed the way a browser addresses it, so the URLs
+    it builds (issuer, redirects) are the public ones. Behind the tunnel that is the SSO
+    hostname over HTTPS; the host's bridge address is inside Authentik's trusted proxies."""
+    if ctx.domain_mode:
+        headers = {"Host": ctx.public_host("authentik"), "X-Forwarded-Proto": "https"}
+    else:
+        headers = {"Host": f"{ctx.host_address}:{ctx.ports['authentik']}"}
+    return Client(f"http://{ctx.ip('authentik')}:9000", headers=headers, timeout=15)
+
+
 def discovery(ctx) -> Dict[str, Any]:
-    """The OIDC discovery document as a browser sees it (Host = public address)."""
-    host = f"{ctx.host_address}:{ctx.ports['authentik']}"
-    c = Client(f"http://{ctx.ip('authentik')}:9000", headers={"Host": host}, timeout=15)
-    return c.get(f"/application/o/{T.ISSUER_SLUG}/.well-known/openid-configuration")
+    """The OIDC discovery document as a browser sees it."""
+    return as_browser(ctx).get(f"/application/o/{T.ISSUER_SLUG}/.well-known/openid-configuration")
 
 
 def jwks_count(ctx) -> int:
-    host = f"{ctx.host_address}:{ctx.ports['authentik']}"
-    c = Client(f"http://{ctx.ip('authentik')}:9000", headers={"Host": host}, timeout=15)
-    return len((c.get(f"/application/o/{T.ISSUER_SLUG}/jwks/") or {}).get("keys", []))
+    return len((as_browser(ctx).get(f"/application/o/{T.ISSUER_SLUG}/jwks/") or {}).get("keys", []))
 
 
 def role_groups_of(ctx, token: str, username: str) -> List[str]:

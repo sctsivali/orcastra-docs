@@ -2,8 +2,8 @@
 on every install pass (they only validate or are cheap and idempotent)."""
 from . import (p01_preflight, p02_wizard, p03_secrets, p04_lxd, p05_instances, p06_ssh,
                p07_base, p08_firewall, p09_vault, p10_authentik, p11_opensearch,
-               p12_vault_logging, p13_cmp, p14_exposure, p15_watchdog, p16_verify,
-               p17_summary)
+               p12_vault_logging, p12b_tunnel, p13_cmp, p13b_orcahub, p14_exposure,
+               p15_watchdog, p16_verify, p17_summary)
 
 PHASES = [
     ("preflight", p01_preflight),
@@ -18,11 +18,15 @@ PHASES = [
     ("authentik", p10_authentik),
     ("opensearch", p11_opensearch),
     ("vault-logging", p12_vault_logging),
+    ("tunnel", p12b_tunnel),
     ("cmp", p13_cmp),
+    ("orcahub", p13b_orcahub),
     ("exposure", p14_exposure),
     ("watchdog", p15_watchdog),
     ("verify", p16_verify),
     ("summary", p17_summary),
 ]
 
-ALWAYS = {"preflight", "wizard", "verify", "summary"}
+# tunnel and orcahub follow the current settings on every pass (a new token, a switch-off),
+# watchdog replaces the host tool when a newer installer runs
+ALWAYS = {"preflight", "wizard", "tunnel", "orcahub", "watchdog", "verify", "summary"}

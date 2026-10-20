@@ -27,6 +27,10 @@ def _env(ctx) -> str:
             f"PG_PASS={s.get('authentik_pg_pass')}\n"
             f"AUTHENTIK_SECRET_KEY={s.get('authentik_secret_key')}\n"
             "AUTHENTIK_ERROR_REPORTING__ENABLED=false\n"
+            # only the tunnel connector in orca-cmp and this host may set X-Forwarded-*: the
+            # default (every private range) let any LAN client choose its own address
+            f"AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS=127.0.0.0/8,::1/128,{ctx.ip('cmp')}/32,"
+            f"{ctx.bridge_gateway}/32\n"
             "COMPOSE_PORT_HTTP=9000\n")
 
 

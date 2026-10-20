@@ -3,6 +3,11 @@
 !!! info "Optional"
     This step is optional. You can access the dashboard directly via IP:port. This guide enables custom domain access (for example, `app.orcastra.io`) with automatic HTTPS via Cloudflare Tunnel.
 
+!!! tip "Deployed with the automated installer?"
+    Do not follow these steps by hand on an installer deployment. Its layout differs (the CMP
+    runs in `orca-cmp`, the services sit on the installer's bridge), and the installer sets the
+    tunnel up itself: see [Public domain (Cloudflare Tunnel)](../deployment/automated-install.md#public-domain-cloudflare-tunnel).
+
 ## Architecture
 
 ```

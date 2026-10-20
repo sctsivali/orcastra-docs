@@ -1,7 +1,7 @@
 """Command line: argument parsing, answer merging, context construction and the phase loop.
 
   orcastra-full [install] [--answers FILE] [--ip-vault ...]   build or resume the deployment
-  orcastra-full status | verify | unseal | credentials | uninstall | maintain
+  orcastra-full status | verify | unseal | credentials | orcahub | uninstall | maintain
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from . import config as C
 from . import topology as T
 from .context import FullContext
 
-COMMANDS = ("install", "status", "verify", "unseal", "credentials", "uninstall", "maintain")
+COMMANDS = ("install", "status", "verify", "unseal", "credentials", "orcahub", "uninstall", "maintain")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,10 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     lc.add_argument("--repair", action="store_true", help="re-run every phase")
     lc.add_argument("--keep-secrets", action="store_true",
                     help="uninstall: keep the secrets, keys and logs in a renamed directory")
+    lc.add_argument("--disable", action="store_true",
+                    help="orcahub: switch OrcaHub federation off (the source and button go away)")
     s = p.add_argument_group("deployment settings (same keys as the answer file)")
     for key, (default, help_) in C.FIELDS.items():
-        if key == "ADMIN_PASSWORD":
-            continue  # never on the command line (process list), only in the answer file
+        if key in C.SECRET_KEYS:
+            continue  # never on the command line (process list), only answer file or environment
         s.add_argument("--" + key.lower().replace("_", "-"), dest=key, default=None,
                        metavar=key, help=help_ + (f" (default {default})" if default else ""))
     return p

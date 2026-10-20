@@ -426,6 +426,31 @@ class WizardHelpers(unittest.TestCase):
         self.assertEqual(W.listen_on_other_network(fwds, "1.2.3.4", "orcabr0"), "lxdbr0")
         self.assertIsNone(W.listen_on_other_network(fwds, "1.2.3.4", "lxdbr0"))
 
+    def test_all_forwards_skips_networks_without_forwards(self):
+        from orcastra_core.proc import Result
+        from orcastra_full_install.lxd import Lxd
+
+        nets = [{"name": "lxdbr0", "type": "bridge", "managed": True},
+                {"name": "ovn0", "type": "ovn", "managed": True},
+                {"name": "uplink", "type": "physical", "managed": True},
+                {"name": "eth0", "type": "physical", "managed": False}]
+        fwd = {"listen_address": "1.2.3.4", "config": {}, "ports": []}
+        asked = []
+
+        class P:
+            def run(self, argv, **kw):
+                path = argv[-1].split("?")[0]
+                asked.append(path)
+                if path == "/1.0/networks":
+                    return Result(0, json.dumps(nets), "", argv)
+                if path == "/1.0/networks/uplink/forwards":
+                    return Result(1, "", 'Error: Network driver "physical" does not support forwards', argv)
+                return Result(0, json.dumps([fwd]), "", argv)
+
+        got = Lxd(P(), None, "orcastra", lxc="lxc").all_forwards()
+        self.assertEqual([f["network"] for f in got], ["lxdbr0", "ovn0"])
+        self.assertNotIn("/1.0/networks/uplink/forwards", asked)
+
     def test_leases(self):
         owners = W.lease_owners([{"address": "10.77.0.11", "hostname": "orca-vault", "project": "orcastra"},
                                  {"address": "10.77.0.20", "hostname": "web", "project": "default"},

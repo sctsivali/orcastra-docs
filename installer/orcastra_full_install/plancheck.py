@@ -58,6 +58,14 @@ def check_plan(ctx) -> None:
     if ctx.is_vm and not ctx.facts.get("kvm"):
         problems.append("virtual machines need /dev/kvm on the host")
 
+    if ctx.cluster_member and ctx.facts.get("network_create"):
+        down = [f"{m.get('server_name')} ({m.get('status')})" for m in ctx.lxd.cluster_members()
+                if m.get("status") not in ("Online", "Evacuated")]
+        if down:
+            problems.append(f"the new bridge {ctx.values['NETWORK']} is defined on every cluster "
+                            f"member and {', '.join(down)} cannot take it now: bring it back "
+                            "(`lxc cluster list`) or pick an existing managed bridge")
+
     if pending:
         image = ctx.values.get("IMAGE", T.IMAGE_DEFAULT)
         if ctx.lxd.image_reachable(image):
@@ -78,5 +86,6 @@ def check_plan(ctx) -> None:
 
     if problems:
         raise PreflightError("The plan does not fit this host:\n  - " + "\n  - ".join(problems),
-                             remediation="Pick a smaller sizing, free resources, or fix the image "
-                                         "server access, then re-run.")
+                             remediation="Fix the items above (a smaller sizing or freed resources "
+                                         "for size, image server access for images; the others "
+                                         "name their own fix), then re-run.")

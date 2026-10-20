@@ -1,7 +1,8 @@
 """Phase 14 - Browser access through LXD network forwards on the host address
 (docs/operations/networking.md). Ports are added to an existing forward on that address
 when one exists, and exactly the ports this installer added are recorded, so uninstall never
-touches another workload's forwards."""
+touches another workload's forwards. In domain mode nothing is published: the tunnel is the only
+way in."""
 from __future__ import annotations
 
 from orcastra_core.errors import InstallError
@@ -35,6 +36,16 @@ def remove_ours(ctx, record: dict) -> None:
 def run(ctx) -> None:
     net, listen = ctx.values["NETWORK"], ctx.host_address
     record = ctx.state.artifact("forward_ports") or {}
+    if ctx.domain_mode:
+        # one way in: the tunnel. Plain-HTTP ports on the host address would bypass it (and any
+        # Cloudflare Access or WAF rule) and send Authentik passwords in clear text.
+        if record:
+            remove_ours(ctx, record)
+            ctx.state.drop_artifact("forward_ports")
+            ctx.log.ok(f"Removed the plain-HTTP forwards on {record['listen']}: browsers use the public hostnames")
+        else:
+            ctx.log.ok(f"Nothing published on {listen}: browsers use the public hostnames")
+        return
     if record and (record.get("listen") != listen or record.get("network") != net
                    or sorted(record.get("ports", [])) != sorted(ctx.ports.values())):
         remove_ours(ctx, record)

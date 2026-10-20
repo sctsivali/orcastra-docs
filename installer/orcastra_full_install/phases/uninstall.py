@@ -64,8 +64,14 @@ def run(ctx) -> None:
     for role in T.ROLES:
         inst = lxd.instance(T.name(role))
         if inst and (inst.get("config") or {}).get(T.TAG_KEY) == role:
-            lxd.must("delete", "--force", T.name(role), what=f"delete {T.name(role)}", timeout=900)
-            ctx.log.ok(f"Deleted {T.name(role)}")
+            name = T.name(role)
+            if (inst.get("config") or {}).get(T.PROTECT_KEY) == "true":
+                # LXD changes the flag on a stopped VM only
+                if inst.get("status") != "Stopped":
+                    lxd.must("stop", "--force", name, what=f"stop {name}", timeout=600)
+                lxd.must("config", "unset", name, T.PROTECT_KEY, what=f"clear the deletion protection of {name}")
+            lxd.must("delete", "--force", name, what=f"delete {name}", timeout=900)
+            ctx.log.ok(f"Deleted {name}")
     p14_exposure.remove_ours(ctx, ctx.state.artifact("forward_ports") or {})
     ctx.log.ok("Removed the port forwards this installer added")
 

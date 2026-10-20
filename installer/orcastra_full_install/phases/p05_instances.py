@@ -19,8 +19,12 @@ def _create(ctx, role: str) -> None:
     name, size = T.name(role), ctx.sizes[role]
     args = ["init", ctx.values.get("IMAGE", T.IMAGE_DEFAULT), name, "--profile", T.PROFILE,
             "-c", f"limits.cpu={size['cpu']}", "-c", f"limits.memory={size['mem']}GiB",
-            "-c", f"{T.TAG_KEY}={role}", "-c", "boot.autostart=true",
+            "-c", f"{T.TAG_KEY}={role}", "-c", "boot.autostart=true", "-c", f"{T.PROTECT_KEY}=true",
             "-c", f"boot.autostart.priority={_PRIORITY[role]}", "-c", "boot.autostart.delay=5"]
+    if ctx.cluster_member:
+        # pinned to this member: its bridge is node-local, this host is the SSH bastion and the
+        # forwards listen here, so an evacuation stops the instance instead of moving it away
+        args += ["--target", ctx.cluster_member, "-c", "cluster.evacuate=stop"]
     if ctx.is_vm:
         args.append("--vm")
     else:
@@ -52,6 +56,23 @@ def _ensure_filtering(ctx, name: str, inst: dict) -> None:
                      f"({res.err.strip()[-120:]}). Stop it, run `lxc config device set --project "
                      f"{ctx.project} {name} eth0 security.mac_filtering=true "
                      "security.ipv4_filtering=true`, and start it again.")
+
+
+def protect_hint(ctx, name: str) -> str:
+    return (f"lxc stop --project {ctx.project} {name} && lxc config set --project {ctx.project} "
+            f"{name} {T.PROTECT_KEY}=true && lxc start --project {ctx.project} {name}")
+
+
+def _ensure_protection(ctx, name: str, inst: dict) -> None:
+    """Instances from an installer before deletion protection. LXD only changes the flag on a
+    stopped VM, and stopping the control plane is the operator's call, so a running VM is
+    reported with the commands for the next maintenance window instead."""
+    if (inst.get("config") or {}).get(T.PROTECT_KEY) == "true":
+        return
+    if inst.get("type") == "virtual-machine" and inst.get("status") == "Running":
+        ctx.log.warn(f"{name} is not protected from deletion. In a maintenance window: {protect_hint(ctx, name)}")
+        return
+    ctx.lxd.must("config", "set", name, f"{T.PROTECT_KEY}=true", what=f"protect {name} from deletion")
 
 
 def _wait_booted(ctx, role: str) -> None:
@@ -98,6 +119,7 @@ def run(ctx) -> None:
                 done.append(role)
                 ctx.state.set_artifact("instances", sorted(set(done)))
             _ensure_filtering(ctx, name, inst)
+            _ensure_protection(ctx, name, inst)
         if ctx.lxd.status(name) != "Running":
             ctx.lxd.must("start", name, what=f"start {name}", timeout=600)
         _wait_booted(ctx, role)

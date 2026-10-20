@@ -6,6 +6,12 @@ When you sell compute through the OrcaHub marketplace, a buyer purchases on Orca
 
 Federation closes that gap. You configure your Authentik to trust OrcaHub's identity provider as an upstream OIDC source. The buyer clicks **Sign in with OrcaHub**, authenticates once against OrcaHub, and lands in your dashboard scoped to exactly their own projects. This is a one-time setup per partner.
 
+!!! tip "Installed with the automated installer?"
+    The [Full installer](../deployment/automated-install.md#orcahub-federation) does Steps 1 to 3
+    for you with `orcastra-full orcahub`, after its [public domain](../deployment/automated-install.md#public-domain-cloudflare-tunnel)
+    is set up, and checks the login page from the outside. The policy it binds is the one below,
+    taken from this page. Step 4 (testing with real tenants) stays yours.
+
 ---
 
 ## How it works
@@ -105,6 +111,8 @@ In your Authentik admin, go to **Directory -> Federation and Social login -> Cre
 | Consumer secret | your Client Secret from OrcaHub |
 | OIDC Well-known URL | the discovery URL from OrcaHub |
 | Scopes | leave blank; the Generic OpenID Connect source requests `openid email profile` by default |
+| PKCE | `S256` when OrcaHub's discovery document lists it in `code_challenge_methods_supported` |
+| Group matching mode | **Use the group name, but deny enrollment when the name already exists** |
 | Authentication flow | `default-source-authentication` |
 | Enrollment flow | `default-source-enrollment` |
 
@@ -143,6 +151,12 @@ if not isinstance(userinfo, dict):
     ak_message("OrcaHub sign-in requires a verified email address.")
     return False
 
+# Upstream groups are never accepted. Authentik would create a group that does not exist
+# locally and add the user to it, and the CMP grants roles by group name (admins, ...).
+if userinfo.get("groups"):
+    ak_message("OrcaHub sign-in must not carry group claims.")
+    return False
+
 email = userinfo.get("email")
 if (
     isinstance(email, str)
@@ -155,7 +169,7 @@ ak_message("OrcaHub sign-in requires a verified email address.")
 return False
 ```
 
-The strict `is True` comparison fails closed when the claim is absent, false, or encoded as a string. Keep policy execution logging disabled during normal operation and never log the complete OAuth userinfo object, because it contains personal identity claims.
+The strict `is True` comparison fails closed when the claim is absent, false, or encoded as a string. The `groups` check refuses any sign-in that carries upstream group names, even names that do not exist locally: Authentik would create such a group and add the user to it, and the CMP derives roles from group names (`admins` or `orcastra-admins` mean Admin), so a misconfigured or compromised upstream could otherwise grant itself a local role. Keep policy execution logging disabled during normal operation and never log the complete OAuth userinfo object, because it contains personal identity claims.
 
 ### 2b. Bind it to the source flows
 
@@ -244,6 +258,7 @@ The invariant across every IdP is that the federated `email` must equal the emai
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `OrcaHub sign-in must not carry group claims.` | The OrcaHub provider sends a `groups` claim (the managed `profile` mapping). The gate refuses it before any account or group is written | Same fix as the row below: the no-groups profile mapping on the OrcaHub provider |
 | `duplicate key value violates unique constraint ... group_name ...` for a local `role_*` group | The OrcaHub provider is using Authentik's managed `profile` mapping, which exports upstream group names; the partner source then tries to create the same group locally | Replace the managed `profile` mapping on the dedicated OrcaHub provider with the no-groups profile mapping. Do not delete the local group or enable same-name group linking. Start a completely new private session afterward. |
 | `Request denied - Failed to update user` | The tenant already exists in your Authentik and matching mode is "unique identifier", so enrollment tries to create a duplicate | Set **User matching mode** to **Link to a user with identical email address** |
 | `redirect_uri mismatch` at OrcaHub | Source slug does not match the callback OrcaHub registered | Make the source slug match the `<slug>` in your callback URL |

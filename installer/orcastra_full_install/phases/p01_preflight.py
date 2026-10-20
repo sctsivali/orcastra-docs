@@ -66,16 +66,32 @@ def run(ctx) -> None:
             ctx.facts["lxd_firewall"] = env.get("firewall", "")
             ctx.facts["lxd_storage_drivers"] = [d.get("Name") for d in env.get("storage_supported_drivers", [])]
 
-            # one deployment per host: refuse a second one in another project
+            member = ctx.cluster_member
+            if member:
+                members = ctx.lxd.cluster_members()
+                status = next((m.get("status", "unknown") for m in members
+                               if m.get("server_name") == member), "unknown")
+                add("LXD cluster", "PASS" if status == "Online" else "FAIL",
+                    f"member {member} ({status}) of {len(members)}, the instances are placed here",
+                    f"Restore it with `lxc cluster restore {member}`, or run the installer on an "
+                    "online member.")
+
+            # one deployment per host (per cluster): refuse a second one in another project
             ours = []
             for inst in ctx.lxd.instances(all_projects=True):
                 if T.TAG_KEY in (inst.get("config") or {}):
-                    ours.append((inst.get("project", "default"), inst["name"]))
-            foreign = [f"{p}/{n}" for p, n in ours if p != ctx.project]
+                    ours.append((inst.get("project", "default"), inst["name"], inst.get("location", "")))
+            foreign = [f"{p}/{n}" for p, n, _ in ours if p != ctx.project]
+            elsewhere = sorted({loc for _, _, loc in ours if member and loc and loc != member})
             if foreign:
                 add("Existing deployment", "FAIL", ", ".join(foreign),
                     f"This host already runs an Orcastra deployment in another LXD project. "
                     f"Re-run with --lxd-project {foreign[0].split('/')[0]} to manage it.")
+            elif elsewhere:
+                add("Existing deployment", "FAIL",
+                    f"{len(ours)} instance(s) in project {ctx.project} on member {', '.join(elsewhere)}",
+                    f"Run the installer on {elsewhere[0]}: the deployment's bridge, SSH keys, state "
+                    "and watchdog live on that member.")
             elif ours:
                 add("Existing deployment", "PASS", f"{len(ours)} instance(s) in project {ctx.project} (resume)")
             else:

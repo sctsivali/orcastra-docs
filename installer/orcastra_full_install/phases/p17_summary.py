@@ -48,9 +48,21 @@ def run(ctx) -> None:
     log.info(f"  ssh -J <you>@{ctx.host_address} -i <key> ubuntu@{ctx.ip('vault')}   "
              "(add your key to the instances first)")
     log.info("")
-    log.info("Day-2 commands: orcastra-full status | verify | unseal | credentials | uninstall")
+    log.info("Day-2 commands: orcastra-full status | verify | unseal | credentials | orcahub | uninstall")
     log.info("")
-    log.warn("The web endpoints are plain HTTP. Keep them on a trusted network or VPN.")
+    if ctx.domain_mode:
+        log.info(f"Public HTTPS through the Cloudflare Tunnel only; nothing is published in plain "
+                 f"HTTP on {ctx.host_address}. Put Cloudflare Access in front of "
+                 f"{ctx.public_host('logs')} and give akadmin a second factor.")
+        if ctx.values.get("ORCAHUB_CLIENT_ID"):
+            log.info(f"OrcaHub federation is on. Callback registered with OrcaHub: "
+                     f"{ctx.public_url('authentik')}/source/oauth/callback/orcahub/")
+        else:
+            log.info("To list on OrcaHub: request a federation client with the callback "
+                     f"{ctx.public_url('authentik')}/source/oauth/callback/orcahub/ and run "
+                     "`orcastra-full orcahub`.")
+    else:
+        log.warn("The web endpoints are plain HTTP. Keep them on a trusted network or VPN.")
     log.warn(f"Copy {ctx.vault_init_path} to offline storage now. It is the only way to "
              "unseal Vault if this host is lost.")
     log.info("Next: register a cluster in the CMP, then create users in Authentik and add them "

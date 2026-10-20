@@ -14,9 +14,11 @@ _DEFAULT_OFFSETS = {"vault": 11, "authentik": 12, "opensearch": 13, "cmp": 14}
 
 
 def managed_bridges(networks: List[dict]) -> List[dict]:
+    """Usable managed IPv4 bridges. A cluster bridge still Pending or Errored on some member
+    is not one: picking it would adopt a half-made network as if it were ours."""
     out = []
     for n in networks:
-        if n.get("managed") and n.get("type") == "bridge":
+        if n.get("managed") and n.get("type") == "bridge" and n.get("status", "Created") == "Created":
             addr = (n.get("config") or {}).get("ipv4.address", "")
             if addr and addr not in ("none", "auto"):
                 out.append(n)
@@ -27,21 +29,22 @@ def bridge_cidr(network: dict) -> str:
     return (network.get("config") or {}).get("ipv4.address", "")
 
 
-def used_subnets(proc: Proc, networks: List[dict]) -> List[ipaddress.IPv4Network]:
-    """Subnets already routed on the host or owned by an LXD network."""
+def used_subnets(proc: Proc, networks: List[dict], own: str = "") -> List[ipaddress.IPv4Network]:
+    """Subnets already routed on the host or owned by an LXD network. `own` is a bridge this
+    installer is still creating (a resumed cluster bridge), whose route is not a conflict."""
     nets: List[ipaddress.IPv4Network] = []
     res = proc.run(["ip", "-json", "route"])
     if res.ok and res.out.strip():
         for r in json.loads(res.out):
             dst = r.get("dst", "")
-            if dst and dst != "default":
+            if dst and dst != "default" and not (own and r.get("dev") == own):
                 try:
                     nets.append(ipaddress.ip_network(dst if "/" in dst else dst + "/32", strict=False))
                 except ValueError:
                     pass
     for n in networks:
         cidr = bridge_cidr(n)
-        if "/" in cidr:
+        if "/" in cidr and n.get("name") != own:
             nets.append(ipaddress.ip_interface(cidr).network)
     return nets
 
@@ -57,11 +60,11 @@ def free_subnet(proc: Proc, networks: List[dict]) -> str:
     return "10.77.0.1/24"
 
 
-def subnet_conflict(proc: Proc, networks: List[dict], cidr: str) -> Optional[str]:
+def subnet_conflict(proc: Proc, networks: List[dict], cidr: str, own: str = "") -> Optional[str]:
     net = ipaddress.ip_interface(cidr).network
     if net.overlaps(ipaddress.ip_network(T.DOCKER_POOL)):
         return f"{net} overlaps {T.DOCKER_POOL}, which Docker uses inside the instances"
-    for t in used_subnets(proc, networks):
+    for t in used_subnets(proc, networks, own):
         if net.overlaps(t):
             return f"{net} overlaps {t}, which is already in use on this host"
     return None

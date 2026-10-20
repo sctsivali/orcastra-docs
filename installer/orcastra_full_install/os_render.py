@@ -4,9 +4,10 @@ Dashboards config are used as they are, with two named edits that assert they ma
 exactly once, so a change in the guide fails loudly here instead of half-applying:
 
 - the Java heap follows the instance size instead of the guide's fixed 4g,
-- `opensearch_security.cookie.secure` is false, because the installer serves Dashboards on
-  the host address over plain HTTP (the guide expects HTTPS through a tunnel, and a secure
-  cookie never reaches the browser over HTTP, so the login would loop).
+- `opensearch_security.cookie.secure` is false when the installer serves Dashboards on the
+  host address over plain HTTP (the guide expects HTTPS through a tunnel, and a secure cookie
+  never reaches the browser over HTTP, so the login would loop). With a public HTTPS domain
+  the guide's value stays.
 """
 from __future__ import annotations
 
@@ -43,8 +44,11 @@ def internal_users(hashes: Dict[str, str]) -> str:
     return u
 
 
-def dashboards_yml() -> str:
-    """The kibanaserver password is not here: it goes into the Dashboards keystore."""
+def dashboards_yml(https: bool = False) -> str:
+    """The kibanaserver password is not here: it goes into the Dashboards keystore. Behind a
+    public HTTPS hostname the guide's secure cookie stays as it is."""
+    if https:
+        return _blocks.OSD_YML
     return _sub(_blocks.OSD_YML, "opensearch_security.cookie.secure: true\n",
                 "# orcastra-full serves Dashboards over plain HTTP on the host address\n"
                 "opensearch_security.cookie.secure: false\n")
