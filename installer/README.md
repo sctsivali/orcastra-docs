@@ -73,6 +73,40 @@ python3 -m orcastra_full_install --dry-run --non-interactive --admin-email a@exa
 python3 -m orcastra_mini_install --dry-run --non-interactive -y --install-dir /tmp/mini --host 10.0.0.5
 ```
 
+## LXD clusters (Full)
+
+The Full installer detects a cluster from `/1.0` (`server_clustered`) and pins the deployment to
+the member it runs on (`FullContext.cluster_member`): `lxc init --target` with
+`cluster.evacuate=stop`, a new bridge defined per member with `--target` before the final
+`network create`, existing storage pools only, and a preflight refusal when the tagged instances
+live on another member. Bridge forwards are member-specific in LXD and the installer always talks
+to the local member, so phase 14 needs no `--target`. Network forwards exist only on `bridge` and
+`ovn` networks; a MicroCloud's OVN uplink is a managed `physical` network and is skipped.
+Standalone hosts take the same code paths as before.
+
+## Domain mode and OrcaHub federation (Full)
+
+`PUBLIC_DOMAIN` switches `FullContext.public_url` to `https://<DOMAIN_*>`, so the issuer,
+redirect URI, CMP `.env`, verify and summary follow from one place. `phases/p12b_tunnel.py` runs
+the connector of a remotely managed Cloudflare Tunnel in orca-cmp (pinned GitHub release plus
+sha256 in `topology.CLOUDFLARED_DEB_SHA256`; Cloudflare's apt repository keeps only the newest
+build) and `cloudflare.py` proves each route from the host. Every installer HTTP client sends
+`httpapi.USER_AGENT`: Cloudflare's Browser Integrity Check answers 403 (error 1010) to urllib's
+default agent.
+
+`orcahub.py` and `phases/p13b_orcahub.py` automate docs/operations/orcahub-federation-sso.md;
+the expression policy is extracted from that page into `_blocks.ORCAHUB_POLICY`. Authentik
+2025.10 validates a PATCH on an OAuth source or an identification stage as if it were the whole
+object (a partial source PATCH dies with KeyError `provider_type`, answered as HTTP 405, and the
+stage refuses an empty source list without its `user_fields`), and refetches the upstream
+discovery on every source save, so the source is always sent whole, the stage PATCH carries
+`user_fields`, and `--disable` switches the source off through `ak shell`.
+
+`tunnel`, `orcahub` and `watchdog` are in `phases.ALWAYS`: a new token, a federation switch-off
+and a newer installer (which replaces `/usr/local/sbin/orcastra-full`) apply on any re-run.
+Instances carry `security.protection.delete`; LXD changes it on a stopped VM only, so uninstall
+stops, unprotects, then deletes, and an older deployment gets the maintenance commands printed.
+
 ## Build and publish a release
 
 ```bash

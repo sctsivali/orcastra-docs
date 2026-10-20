@@ -10,7 +10,7 @@ from orcastra_core.prompt import Prompter
 from orcastra_core.state import State
 
 from . import topology as T
-from .config import public_ports, sizes_from
+from .config import is_off, public_ports, sizes_from
 from .lxd import Lxd
 from .remote import Remote
 from .secrets import SecretStore
@@ -57,6 +57,13 @@ class FullContext:
             self._lxd = Lxd(self.proc, self.log, self.project)
         return self._lxd
 
+    @property
+    def cluster_member(self) -> Optional[str]:
+        """The LXD cluster member this installer runs on, None when LXD is standalone. The
+        instances are pinned to it: their bridge is node-local, this host is the SSH bastion
+        and the forwards listen on its address."""
+        return self.lxd.cluster_member()
+
     def remote(self, role: str) -> Remote:
         return Remote(self.lxd, T.name(role))
 
@@ -90,7 +97,17 @@ class FullContext:
     def host_address(self) -> str:
         return self.v("HOST_ADDRESS")
 
+    @property
+    def domain_mode(self) -> bool:
+        """Browsers use public HTTPS hostnames served through a Cloudflare Tunnel."""
+        return not is_off(self.values.get("PUBLIC_DOMAIN"))
+
+    def public_host(self, service: str) -> str:
+        return self.v(T.DOMAIN_KEYS[service][0])
+
     def public_url(self, service: str) -> str:
+        if self.domain_mode:
+            return f"https://{self.public_host(service)}"
         return f"http://{self.host_address}:{self.ports[service]}"
 
     @property

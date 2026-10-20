@@ -1,7 +1,8 @@
 """Application checks from where real traffic comes from: the public URLs (through the LXD
-forwards), the NextAuth sign-in redirect (proves the frontend reaches the issuer through
-the hairpin), and calls from inside the CMP containers to Vault, the Authentik API and the
-issuer's JWKS with the credentials the containers actually hold."""
+forwards, or through Cloudflare in domain mode), the NextAuth sign-in redirect (proves the
+frontend reaches the issuer through the hairpin or the public hostname), and calls from
+inside the CMP containers to Vault, the Authentik API and the issuer's JWKS with the
+credentials the containers actually hold."""
 from __future__ import annotations
 
 import http.cookiejar
@@ -13,16 +14,11 @@ from typing import Callable
 
 from . import authentik_api as A
 from . import topology as T
-from .httpapi import Client, HttpError
+from .httpapi import USER_AGENT, Client, HttpError, NoRedirect
 
 Check = Callable[[str, bool, str], None]
 FRONTEND = "orcastra-dashboard-frontend"
 BACKEND = "orcastra-dashboard-backend"
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **kw):  # noqa: ANN002 - urllib signature
-        return None
 
 
 def _status(url: str) -> int:
@@ -59,7 +55,8 @@ def signin_redirect(ctx, check: Check) -> None:
     on the public address with our client_id."""
     base = ctx.public_url("cmp")
     jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), _NoRedirect)
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), NoRedirect)
+    opener.addheaders = [("User-Agent", USER_AGENT)]
     try:
         with opener.open(base + "/api/auth/csrf", timeout=20) as resp:
             csrf = json.loads(resp.read().decode())["csrfToken"]
@@ -80,7 +77,7 @@ def signin_redirect(ctx, check: Check) -> None:
 
 
 _PY = ("import json,os,urllib.request as u;"
-       "r=u.Request({url},headers={headers});"
+       "r=u.Request({url},headers={headers});r.add_header('User-Agent','" + USER_AGENT + "');"
        "print(json.dumps(json.load(u.urlopen(r,timeout=10))))")
 
 
@@ -94,6 +91,7 @@ def _in_container(ctx, container: str, url_expr: str, headers_expr: str = "{}") 
 
 
 def from_containers(ctx, check: Check) -> None:
+    path = "the public URL" if ctx.domain_mode else "the hairpin"
     try:
         d = _in_container(ctx, BACKEND, "os.environ['VAULT_ADDR']+'/v1/auth/token/lookup-self'",
                           "{'X-Vault-Token':os.environ['VAULT_TOKEN']}")
@@ -111,22 +109,30 @@ def from_containers(ctx, check: Check) -> None:
         check("backend -> Authentik API with the role-sync token", False, str(exc))
     try:
         d = _in_container(ctx, BACKEND, "os.environ['AUTHENTIK_ISSUER']+'jwks/'")
-        check("backend -> issuer JWKS through the hairpin", len(d.get("keys", [])) > 0,
+        check(f"backend -> issuer JWKS through {path}", len(d.get("keys", [])) > 0,
               f"{len(d.get('keys', []))} key(s)")
     except Exception as exc:  # noqa: BLE001
-        check("backend -> issuer JWKS through the hairpin", False, str(exc))
+        check(f"backend -> issuer JWKS through {path}", False, str(exc))
     res = ctx.remote("cmp").run(
         f"docker exec {FRONTEND} node -e \"fetch(process.env.AUTHENTIK_ISSUER+'.well-known/openid-configuration')"
         ".then(r=>r.json()).then(j=>console.log(j.issuer)).catch(e=>{{console.error(e.message);process.exit(1)}})\"",
         check=False, timeout=60)
-    check("frontend -> issuer discovery through the hairpin", res.ok and res.out.strip() == ctx.issuer,
+    check(f"frontend -> issuer discovery through {path}", res.ok and res.out.strip() == ctx.issuer,
           (res.out or res.err).strip()[-160:])
     res = ctx.remote("cmp").run("docker exec orcastra-dashboard-fluent-bit curl -sf http://127.0.0.1:2020/api/v1/health",
                                 check=False, timeout=30)
     check("CMP Fluent Bit healthy", res.ok, res.out.strip()[:60])
 
 
+def tunnel(ctx, check: Check) -> None:
+    from .phases.p12b_tunnel import METRICS
+    ok = ctx.remote("cmp").ok(f"curl -fsS -o /dev/null http://{METRICS}/ready")
+    check("Cloudflare Tunnel connector connected", ok, "ready" if ok else "not ready")
+
+
 def all_checks(ctx, check: Check) -> None:
+    if ctx.domain_mode:
+        tunnel(ctx, check)
     public_urls(ctx, check)
     signin_redirect(ctx, check)
     from_containers(ctx, check)

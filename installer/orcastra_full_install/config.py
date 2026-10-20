@@ -6,7 +6,9 @@ Precedence is CLI > answer file > environment > wizard/default.
 """
 from __future__ import annotations
 
+import base64
 import ipaddress
+import json
 import re
 from typing import Dict, Iterable, List, Optional
 
@@ -41,6 +43,15 @@ FIELDS: Dict[str, tuple] = {
                     + ", ".join(CMP_RELEASES)),
     "IMAGE": (IMAGE_DEFAULT, "LXD image for the instances"),
     "FIX_HOST_FIREWALL": ("ask", "yes, no or ask: let the installer fix host Docker/ufw rules"),
+    "PUBLIC_DOMAIN": ("", "base domain for HTTPS through a Cloudflare Tunnel (empty or none = off)"),
+    "DOMAIN_CMP": (None, "public hostname of the CMP (default app.<PUBLIC_DOMAIN>)"),
+    "DOMAIN_API": (None, "public hostname of the CMP API (default api.<PUBLIC_DOMAIN>)"),
+    "DOMAIN_SSO": (None, "public hostname of Authentik (default sso.<PUBLIC_DOMAIN>)"),
+    "DOMAIN_LOGS": (None, "public hostname of OpenSearch Dashboards (default logs.<PUBLIC_DOMAIN>)"),
+    "CLOUDFLARE_TUNNEL_TOKEN": ("", "Cloudflare Tunnel token (answer file or environment only)"),
+    "ORCAHUB_CLIENT_ID": ("", "OrcaHub federation client ID (needs PUBLIC_DOMAIN)"),
+    "ORCAHUB_DISCOVERY_URL": ("", "OrcaHub federation discovery URL (.well-known/openid-configuration)"),
+    "ORCAHUB_CLIENT_SECRET": ("", "OrcaHub federation client secret (answer file or environment only)"),
 }
 for _r in ROLES:
     for _k in ("CPU", "MEM", "DISK"):
@@ -50,7 +61,20 @@ for _r in ROLES:
 # is already running. HOST_ADDRESS and the PORT_* keys can change (re-render path).
 FROZEN = ("INSTANCE_TYPE", "LXD_PROJECT", "STORAGE_POOL", "NETWORK", "IP_VAULT",
           "IP_AUTHENTIK", "IP_OPENSEARCH", "IP_CMP", "IMAGE", "CMP_VERSION")
-RERENDER = ("HOST_ADDRESS", "PORT_AUTHENTIK", "PORT_CMP", "PORT_API", "PORT_LOGS")
+# Settings that may change on a built deployment, each with the phases that re-apply it
+# (verify and summary always run). Unset and "" compare equal, so a key added by a newer
+# installer is no change, while setting it on a deployment that never had it is one.
+_URLS = ("firewall", "authentik", "cmp", "exposure")
+_DOMAIN = ("authentik", "opensearch", "cmp", "exposure")
+RERENDER = {
+    "HOST_ADDRESS": _URLS, "PORT_AUTHENTIK": _URLS, "PORT_CMP": _URLS, "PORT_API": _URLS,
+    "PORT_LOGS": _URLS,
+    "PUBLIC_DOMAIN": _DOMAIN, "DOMAIN_CMP": _DOMAIN, "DOMAIN_API": _DOMAIN,
+    "DOMAIN_SSO": _DOMAIN, "DOMAIN_LOGS": _DOMAIN,
+}
+
+# Never a command-line flag (process list) and never in state.json: kept in secrets.json.
+SECRET_KEYS = ("ADMIN_PASSWORD", "CLOUDFLARE_TUNNEL_TOKEN", "ORCAHUB_CLIENT_SECRET")
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -138,6 +162,54 @@ def v_source(value: str) -> Optional[str]:
     return None
 
 
+_FQDN = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def v_fqdn(value: str) -> Optional[str]:
+    if not _FQDN.match(value):
+        return f"{value!r} is not a lower-case DNS name such as app.example.com"
+    try:
+        ipaddress.ip_address(value)
+        return "use a DNS name, not an IP address"
+    except ValueError:
+        return None
+
+
+def tunnel_token(text: str) -> str:
+    """The token from whatever was pasted: the bare token or Cloudflare's whole
+    `cloudflared service install <token>` / `tunnel run --token <token>` line."""
+    words = [w for w in text.split() if w.startswith("eyJ")]
+    return words[-1] if words else text.strip()
+
+
+def tunnel_id(token: str) -> Optional[str]:
+    try:
+        raw = base64.b64decode(token + "=" * (-len(token) % 4), validate=True)
+        doc = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(doc, dict) or not all(isinstance(doc.get(k), str) and doc[k] for k in "ats"):
+        return None
+    return doc["t"] if re.match(r"^[0-9a-f-]{36}$", doc["t"]) else None
+
+
+def v_tunnel_token(value: str) -> Optional[str]:
+    if tunnel_id(tunnel_token(value)) is None:
+        return ("not a Cloudflare Tunnel token: copy the long value starting with eyJ from the "
+                "tunnel's install command (Zero Trust, Networks, Tunnels)")
+    return None
+
+
+def v_https_url(value: str) -> Optional[str]:
+    if not re.match(r"^https://[a-z0-9.-]+(:[0-9]+)?/\S*$", value):
+        return f"{value!r} is not an https URL"
+    return None
+
+
+def is_off(value: Optional[str]) -> bool:
+    return (value or "").strip().lower() in ("", "none", "off")
+
+
 def v_choice(*options: str):
     def check(value: str) -> Optional[str]:
         return None if value in options else f"choose one of: {', '.join(options)}"
@@ -213,6 +285,15 @@ def check_unique(values: Dict[str, str], keys: Iterable[str], what: str) -> None
 def frozen_changes(previous: Dict[str, str], current: Dict[str, str]) -> List[str]:
     """Keys whose value differs from what the existing instances were built with."""
     return [k for k in FROZEN if k in previous and k in current and previous[k] != current[k]]
+
+
+def rerender_keys(previous: Dict[str, str], current: Dict[str, str]) -> List[str]:
+    """RERENDER keys whose value differs from what the deployment was last built with."""
+    return [k for k in RERENDER if (previous.get(k) or "") != (current.get(k) or "")]
+
+
+def rerender_phases(keys: Iterable[str]) -> List[str]:
+    return sorted({p for k in keys for p in RERENDER[k]}) + ["verify", "summary"]
 
 
 def public_ports(values: Dict[str, str]) -> Dict[str, int]:

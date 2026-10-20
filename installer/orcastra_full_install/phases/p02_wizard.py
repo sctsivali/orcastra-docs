@@ -10,6 +10,7 @@ import ipaddress
 
 from orcastra_core.errors import AbortByUser, ConfigError
 
+from .. import cloudflare
 from .. import config as C
 from .. import hostnet, wizard_lib as W
 from .. import topology as T
@@ -49,17 +50,35 @@ def _instance_type(ctx) -> None:
             return "this host has no /dev/kvm, so only containers are possible"
         return None
     default = "vm" if ctx.facts.get("kvm") else "container"
+    if ctx.interactive and "INSTANCE_TYPE" not in ctx.answered:
+        # the FIELDS default "vm" is not a choice the operator made; offer what this host can run
+        ctx.values["INSTANCE_TYPE"] = default
     _ask(ctx, "INSTANCE_TYPE", "Instance type (vm or container)", default, check)
 
 
 def _pool(ctx) -> None:
     pools = ctx.lxd.pools()
     names = [p["name"] for p in pools]
+    drivers = {p["name"]: p.get("driver") for p in pools}
+    clustered = bool(ctx.cluster_member)
     if pools:
         ctx.log.info("Storage pools: " + ", ".join(f"{p['name']} ({p.get('driver')})" for p in pools))
-    default = "default" if "default" in names else (names[0] if names else "orcastra")
-    name = _ask(ctx, "STORAGE_POOL", "Storage pool (existing, or a new name to create)",
-                default, C.v_name)
+    default = "default" if "default" in names else \
+        next((n for n in names if drivers[n] != "cephfs"), "orcastra")
+
+    def check(v: str):
+        err = C.v_name(v)
+        if err:
+            return err
+        if drivers.get(v) == "cephfs":
+            return f"{v} is a CephFS pool, which holds shared file volumes but no instance disks"
+        if clustered and v not in names:
+            # a new pool in a cluster needs a source defined on every member first
+            return ("in an LXD cluster the installer uses an existing storage pool: "
+                    + ", ".join(n for n in names if drivers[n] != "cephfs"))
+        return None
+    question = "Storage pool (existing)" if clustered else "Storage pool (existing, or a new name to create)"
+    name = _ask(ctx, "STORAGE_POOL", question, default, check)
     if name in names:
         ctx.facts["pool_create"] = False
         return
@@ -89,13 +108,16 @@ def _network(ctx) -> None:
         ctx.facts["network_create"] = False
         ctx.values["NETWORK_SUBNET"] = cidr
     else:
-        if any(n["name"] == name for n in nets):
+        existing = next((n for n in nets if n["name"] == name), None)
+        ours = name in ((ctx.state.artifact("created") or {}).get("network") or [])
+        # a cluster bridge this installer started but did not finish (Pending/Errored) resumes
+        if existing and not (ours and existing.get("status") in ("Pending", "Errored")):
             raise ConfigError(f"Network {name} exists but is not a managed bridge with IPv4.",
                               remediation="Pick a managed bridge or a new name.")
         ctx.facts["network_create"] = True
 
         def check(v: str):
-            return C.v_subnet(v) or W.subnet_conflict(ctx.proc, nets, v)
+            return C.v_subnet(v) or W.subnet_conflict(ctx.proc, nets, v, own=name)
         cidr = _ask(ctx, "NETWORK_SUBNET", f"Gateway/prefix for new bridge {name}",
                     W.free_subnet(ctx.proc, nets), check)
     ctx.facts["bridge_gateway"] = cidr.split("/")[0]
@@ -203,6 +225,100 @@ def _ports(ctx) -> None:
         chosen.append(int(_ask(ctx, key, f"Host port for {svc}", C.FIELDS[key][0], check)))
 
 
+_ENDPOINTS = {"cmp": "the CMP", "api": "the CMP API", "authentik": "Authentik",
+              "logs": "OpenSearch Dashboards"}
+
+
+def _domain(ctx) -> None:
+    """Optional public HTTPS hostnames through a Cloudflare Tunnel (needed by OrcaHub buyers,
+    who reach the CMP from the internet). Off unless asked for."""
+    if "PUBLIC_DOMAIN" not in ctx.answered:
+        wanted = ctx.interactive and ctx.prompt.confirm(
+            "Serve the web endpoints on public HTTPS hostnames through a Cloudflare Tunnel? "
+            "(needed to list on OrcaHub)", default=False)
+        if wanted:
+            _ask(ctx, "PUBLIC_DOMAIN", "Base domain (hostnames default to app., api., sso. and "
+                 "logs. under it)", None, C.v_fqdn)
+        else:
+            ctx.values["PUBLIC_DOMAIN"] = ""
+    if C.is_off(ctx.values.get("PUBLIC_DOMAIN")):
+        ctx.values["PUBLIC_DOMAIN"] = ""
+        for key, _ in T.DOMAIN_KEYS.values():
+            ctx.values.pop(key, None)
+        return
+    base = ctx.values["PUBLIC_DOMAIN"].strip().lower()
+    err = C.v_fqdn(base)
+    if err:
+        raise ConfigError(f"PUBLIC_DOMAIN: {err}")
+    ctx.values["PUBLIC_DOMAIN"] = base
+    chosen = []
+
+    def check(v: str):
+        return C.v_fqdn(v) or (f"{v} is already used for another endpoint" if v in chosen else None)
+    for svc, (key, prefix) in T.DOMAIN_KEYS.items():
+        chosen.append(_ask(ctx, key, f"Public hostname for {_ENDPOINTS[svc]}", f"{prefix}.{base}", check))
+
+    token = C.tunnel_token(ctx.values.get("CLOUDFLARE_TUNNEL_TOKEN") or "") or \
+        ctx.secrets.maybe("cloudflare_tunnel_token") or ""
+    if not token:
+        if not ctx.interactive:
+            raise ConfigError("PUBLIC_DOMAIN is set but there is no CLOUDFLARE_TUNNEL_TOKEN.",
+                              remediation="Put the tunnel token in the answer file or in "
+                                          "ORCASTRA_CLOUDFLARE_TUNNEL_TOKEN.")
+        token = C.tunnel_token(ctx.prompt.ask_secret(
+            "Cloudflare Tunnel token (the eyJ... value of the tunnel's install command)",
+            validate=C.v_tunnel_token, confirm=False))
+    err = C.v_tunnel_token(token)
+    if err:
+        raise ConfigError(f"CLOUDFLARE_TUNNEL_TOKEN: {err}")
+    ctx.log.add_secret(token)
+    ctx.values["CLOUDFLARE_TUNNEL_TOKEN"] = token
+    ctx.facts["tunnel_id"] = C.tunnel_id(token)
+
+
+def orcahub_settings(ctx, force: bool = False) -> None:
+    """Optional OrcaHub federation (docs/operations/orcahub-federation-sso.md), configured
+    later by its own phase. It needs the public SSO hostname: OrcaHub registers an https
+    callback on it. `force` (the `orcastra-full orcahub` command) asks without the yes/no
+    question and wants the client secret again unless the answers carry it."""
+    if "ORCAHUB_CLIENT_ID" not in ctx.answered:
+        wanted = force or ctx.domain_mode and ctx.interactive and ctx.prompt.confirm(
+            "Connect OrcaHub federation now? (needs the client OrcaHub issued for this "
+            "deployment; No = later with `orcastra-full orcahub`)", default=False)
+        if wanted:
+            _ask(ctx, "ORCAHUB_CLIENT_ID", "OrcaHub client ID", None,
+                 lambda v: None if v.strip() else "required")
+        else:
+            ctx.values["ORCAHUB_CLIENT_ID"] = ""
+    if C.is_off(ctx.values.get("ORCAHUB_CLIENT_ID")):
+        ctx.values["ORCAHUB_CLIENT_ID"] = ""
+        ctx.values["ORCAHUB_DISCOVERY_URL"] = ""
+        return
+    if not ctx.domain_mode:
+        on = bool(ctx.state.artifact("orcahub"))
+        raise ConfigError("OrcaHub federation needs a public HTTPS domain: OrcaHub registers "
+                          "an https callback on your Authentik hostname.",
+                          remediation="Run `orcastra-full orcahub --disable` before switching the "
+                                      "domain off." if on else
+                                      "Set PUBLIC_DOMAIN and CLOUDFLARE_TUNNEL_TOKEN as well.")
+
+    def check_url(v: str):
+        return C.v_https_url(v) or (None if v.rstrip("/").endswith("/.well-known/openid-configuration")
+                                    else "the discovery URL ends with /.well-known/openid-configuration")
+    _ask(ctx, "ORCAHUB_DISCOVERY_URL", "OrcaHub discovery URL", None, check_url)
+    secret = ctx.values.get("ORCAHUB_CLIENT_SECRET") or \
+        (None if force else ctx.secrets.maybe("orcahub_client_secret")) or ""
+    if not secret:
+        if not ctx.interactive:
+            raise ConfigError("ORCAHUB_CLIENT_ID is set but there is no ORCAHUB_CLIENT_SECRET.",
+                              remediation="Put the secret in the answer file or in "
+                                          "ORCASTRA_ORCAHUB_CLIENT_SECRET.")
+        secret = ctx.prompt.ask_secret("OrcaHub client secret", confirm=False,
+                                       validate=lambda v: None if v.strip() else "required").strip()
+    ctx.log.add_secret(secret)
+    ctx.values["ORCAHUB_CLIENT_SECRET"] = secret
+
+
 def _admin(ctx) -> None:
     _ask(ctx, "ADMIN_EMAIL", "Admin email (Authentik akadmin)", None, C.v_email)
     if ctx.values.get("ADMIN_PASSWORD"):
@@ -252,13 +368,20 @@ def _summary(ctx) -> None:
     for role in T.ROLES:
         ctx.log.info(f"  {T.name(role):18} {ctx.ip(role):15} {s[role]['cpu']} vCPU / "
                      f"{s[role]['mem']} GiB / {s[role]['disk']} GiB")
-    ctx.log.info("Browser URLs (plain HTTP):")
+    ctx.log.info("Browser URLs (HTTPS through Cloudflare Tunnel " + ctx.facts.get("tunnel_id", "") + "):"
+                 if ctx.domain_mode else "Browser URLs (plain HTTP):")
     for svc, label in (("cmp", "Orcastra CMP"), ("authentik", "Authentik"), ("api", "CMP API"),
                        ("logs", "OpenSearch Dashboards")):
         ctx.log.info(f"  {label:22} {ctx.public_url(svc)}")
     ctx.log.info(f"CMP version {ctx.values['CMP_VERSION']}, admin {ctx.values['ADMIN_EMAIL']}")
-    ctx.log.warn("These URLs are plain HTTP. Keep them on a trusted network or VPN, "
-                 "do not expose them to the internet as they are.")
+    if ctx.domain_mode:
+        cloudflare.log_routes(ctx, ctx.log)
+        if ctx.values.get("ORCAHUB_CLIENT_ID"):
+            ctx.log.info(f"OrcaHub federation: client {ctx.values['ORCAHUB_CLIENT_ID']}, callback "
+                         f"{ctx.public_url('authentik')}/source/oauth/callback/orcahub/")
+    else:
+        ctx.log.warn("These URLs are plain HTTP. Keep them on a trusted network or VPN, "
+                     "do not expose them to the internet as they are.")
     if not ctx.prompt.confirm("Proceed with this configuration?", default=True):
         raise AbortByUser("Stopped at the configuration summary.")
 
@@ -275,6 +398,9 @@ def _static_checks(ctx) -> None:
 
 def run(ctx) -> None:
     _static_checks(ctx)
+    for key in C.SECRET_KEYS:
+        if ctx.values.get(key):
+            ctx.log.add_secret(ctx.values[key])
     previous = ctx.state.data.get("config") or {}
     built = bool(ctx.state.artifact("instances"))
     if built:
@@ -307,6 +433,8 @@ def run(ctx) -> None:
     _sizing(ctx)
     _host_address(ctx)
     _ports(ctx)
+    _domain(ctx)
+    orcahub_settings(ctx)
     _admin(ctx)
     C.check_unique(ctx.values, [f"IP_{r.upper()}" for r in T.ROLES], "IP address")
     _version(ctx)
@@ -315,9 +443,19 @@ def run(ctx) -> None:
     check_plan(ctx)
     _summary(ctx)
 
-    rerender = [k for k in C.RERENDER if previous.get(k) not in (None, ctx.values.get(k))]
+    rerender = C.rerender_keys(previous, ctx.values)
     if built and rerender:
         ctx.log.info("Changed: " + ", ".join(rerender) + ". Dependent phases will re-run.")
-        ctx.state.reset_phases(["firewall", "authentik", "cmp", "exposure", "verify", "summary"])
-    persisted = {k: v for k, v in ctx.values.items() if k != "ADMIN_PASSWORD"}
-    ctx.state.set_config(persisted)
+        ctx.state.reset_phases(C.rerender_phases(rerender))
+    persist(ctx)
+
+
+def persist(ctx) -> None:
+    """The answers into state.json, without secrets. The tunnel token and the OrcaHub secret go
+    to secrets.json here, not in the secrets phase: a re-run that adds them skips that phase."""
+    ctx.state.set_config({k: v for k, v in ctx.values.items() if k not in C.SECRET_KEYS})
+    if not ctx.dry_run:
+        for key, name in (("CLOUDFLARE_TUNNEL_TOKEN", "cloudflare_tunnel_token"),
+                          ("ORCAHUB_CLIENT_SECRET", "orcahub_client_secret")):
+            if ctx.values.get(key):
+                ctx.secrets.put(name, ctx.values[key])

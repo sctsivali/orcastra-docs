@@ -1,8 +1,10 @@
 """Phase 15 - Host tooling. Installs this installer as `/usr/local/sbin/orcastra-full`
-(status, verify, unseal, credentials, uninstall keep working after the install) and the
-systemd timer that runs `orcastra-full maintain` every minute."""
+(status, verify, unseal, credentials, orcahub, uninstall keep working after the install) and
+the systemd timer that runs `orcastra-full maintain` every minute. Runs on every pass, so a
+newer installer replaces the tool and the watchdog code instead of leaving the old ones."""
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
@@ -75,7 +77,34 @@ def _write(path: str, body: str, mode: int) -> None:
     os.chmod(path, mode)
 
 
+def _sha256(path: str) -> str:
+    if not os.path.isfile(path):
+        return ""
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def _current(ctx) -> bool:
+    """The installed tool is this very archive and the units are the ones we write."""
+    me = os.path.abspath(sys.argv[0])
+    if not me.endswith(".pyz") or _sha256(me) != _sha256(PYZ):
+        return False
+    for path, body in ((WRAPPER, _WRAPPER.format(pyz=PYZ)), (SERVICE, _SERVICE.format(wrapper=WRAPPER)),
+                       (TIMER, _TIMER)):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                if fh.read() != body:
+                    return False
+        except OSError:
+            return False
+    return ctx.proc.run(["systemctl", "is-enabled", "--quiet", "orcastra-maintain.timer"]).ok
+
+
 def run(ctx) -> None:
+    from .. import __version__
+    if _current(ctx):
+        ctx.log.ok(f"{WRAPPER} and orcastra-maintain.timer are up to date ({__version__})")
+        return
     os.makedirs(LIB, mode=0o755, exist_ok=True)
     _self_archive(PYZ)
     os.chmod(PYZ, 0o700)
@@ -90,4 +119,4 @@ def run(ctx) -> None:
     res = ctx.proc.run([WRAPPER, "maintain"], timeout=300)
     if not res.ok:
         raise InstallError("The watchdog's first run failed: " + (res.err or res.out)[-400:])
-    ctx.log.ok(f"Installed {WRAPPER} and orcastra-maintain.timer (every 60s)")
+    ctx.log.ok(f"Installed {WRAPPER} {__version__} and orcastra-maintain.timer (every 60s)")

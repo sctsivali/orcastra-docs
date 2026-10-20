@@ -51,14 +51,29 @@ def _pool(ctx) -> None:
 
 def _network(ctx) -> None:
     name = ctx.values["NETWORK"]
-    if ctx.lxd.network(name):
+    net = ctx.lxd.network(name)
+    if net and net.get("status", "Created") == "Created":
         ctx.log.ok(f"Network {name} exists")
         return
-    ctx.lxd.must("network", "create", name, f"ipv4.address={ctx.values['NETWORK_SUBNET']}",
-                 "ipv4.nat=true", "ipv6.address=none", "user.orcastra=managed",
-                 project=False, what=f"create network {name}")
+    config = (f"ipv4.address={ctx.values['NETWORK_SUBNET']}", "ipv4.nat=true", "ipv6.address=none",
+              "user.orcastra=managed")
+    member = ctx.cluster_member
+    if not member:
+        ctx.lxd.must("network", "create", name, *config, project=False, what=f"create network {name}")
+        _record(ctx, "network", name)
+        ctx.log.ok(f"Created bridge {name} ({ctx.values['NETWORK_SUBNET']}, NAT)")
+        return
+    # LXD clusters define a network on every member (pending) before one create instantiates
+    # it everywhere. Recorded first, so uninstall also removes a half-made bridge.
     _record(ctx, "network", name)
-    ctx.log.ok(f"Created bridge {name} ({ctx.values['NETWORK_SUBNET']}, NAT)")
+    defined = set((net or {}).get("locations") or [])
+    for m in ctx.lxd.cluster_members():
+        if m["server_name"] not in defined:
+            ctx.lxd.must("network", "create", name, "--target", m["server_name"], project=False,
+                         what=f"define network {name} on {m['server_name']}")
+    ctx.lxd.must("network", "create", name, *config, project=False, what=f"create network {name}")
+    ctx.log.ok(f"Created bridge {name} ({ctx.values['NETWORK_SUBNET']}, NAT) on every cluster "
+               f"member; the instances use it on {member}")
 
 
 def _profile(ctx) -> None:

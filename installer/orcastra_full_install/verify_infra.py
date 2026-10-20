@@ -23,6 +23,11 @@ def instances(ctx, check: Check) -> None:
         dev = (inst.get("expanded_devices") or {}).get("eth0", {})
         check(f"{T.name(role)} address {ctx.ip(role)}", dev.get("ipv4.address") == ctx.ip(role),
               dev.get("ipv4.address", "unset"))
+        if inst and (inst.get("config") or {}).get(T.PROTECT_KEY) != "true":
+            # a warning, not a failure: an older deployment's running VMs only take the flag
+            # when stopped (see p05_instances.protect_hint)
+            from .phases.p05_instances import protect_hint
+            ctx.log.warn(f"{T.name(role)} is not protected from deletion: {protect_hint(ctx, T.name(role))}")
 
 
 def ssh(ctx, check: Check) -> None:

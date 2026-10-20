@@ -47,6 +47,27 @@ def credentials(ctx) -> int:
     return 0
 
 
+def orcahub(ctx) -> int:
+    """Connect OrcaHub federation on a running deployment (asks for the client OrcaHub issued),
+    or switch it off with --disable. Then runs the federation phase, which proves the result."""
+    from orcastra_core.answers import combined_answers
+    from . import orcahub as O
+    from .phases import p02_wizard, p13b_orcahub
+    if ctx.flags.disable:
+        ctx.values["ORCAHUB_CLIENT_ID"] = ""
+        ctx.values["ORCAHUB_DISCOVERY_URL"] = ""
+    else:
+        explicit = combined_answers(ctx.flags.answers)
+        for key in ("ORCAHUB_CLIENT_ID", "ORCAHUB_DISCOVERY_URL"):
+            if not (getattr(ctx.flags, key, None) or explicit.get(key)):
+                ctx.answered.discard(key)
+        p02_wizard.orcahub_settings(ctx, force=True)
+        ctx.log.info(f"Callback to register with OrcaHub: {O.callback(ctx)}")
+    p02_wizard.persist(ctx)
+    p13b_orcahub.run(ctx)
+    return 0
+
+
 def uninstall(ctx) -> int:
     U.run(ctx)
     return 0

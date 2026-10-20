@@ -13,6 +13,9 @@ DEPLOY_DIR = "/var/lib/orcastra"
 REMOTE_DIR = "/opt/orcastra"          # compose project dir inside each instance
 COMPOSE_PROJECT = "orcastra"
 TAG_KEY = "user.orcastra.role"        # set on every instance we create
+# LXD refuses to delete a protected instance from any client, the CMP managing this very host
+# or cluster included, until the flag is cleared (uninstall does that first)
+PROTECT_KEY = "security.protection.delete"
 
 IMAGE_DEFAULT = "ubuntu:24.04"
 CMP_REGISTRY_REPO = "svlct/orcastra-dashboard"   # tags backend-<version>, frontend-<version>
@@ -22,6 +25,14 @@ PINS = {
     "vault_apt": "1.21.4-1",
     "fluentbit_apt": "4.2.8",
     "opensearch": "3.5.0",
+    "cloudflared": "2026.10.0",
+}
+
+# cloudflared from the GitHub release (immutable), not Cloudflare's apt repo, which only keeps
+# the newest build, so a pin there would break the next time Cloudflare publishes
+CLOUDFLARED_DEB_SHA256 = {
+    "amd64": "9721287c28f78cb623e77c7b95a63feea87e909054d75666a0ec9eff20e5d548",
+    "arm64": "7e0d76de3858b6396bd234ae26182bee222133398667d2647b90381d00c00e98",
 }
 
 # Releases this installer can deploy, newest first, each with its embedded release compose
@@ -72,6 +83,14 @@ PUBLIC_PORTS = {
     "cmp": ("cmp", 4321),
     "api": ("cmp", 8765),
     "logs": ("opensearch", 5601),
+}
+
+# Public hostnames in domain mode (Cloudflare Tunnel): answer key and default prefix per service.
+DOMAIN_KEYS = {
+    "cmp": ("DOMAIN_CMP", "app"),
+    "api": ("DOMAIN_API", "api"),
+    "authentik": ("DOMAIN_SSO", "sso"),
+    "logs": ("DOMAIN_LOGS", "logs"),
 }
 
 # Docker networks inside the instances are allocated from this pool, so the CMP backend can

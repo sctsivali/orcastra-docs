@@ -64,7 +64,7 @@ def _files(ctx, paths) -> str:
         ("config/internal_users.yml", os_render.internal_users(hashes), "0600", "1000:1000"),
         ("config/roles.yml", _blocks.OS_ROLES, "0600", "1000:1000"),
         ("config/roles_mapping.yml", _blocks.OS_ROLES_MAPPING, "0600", "1000:1000"),
-        ("config/opensearch_dashboards.yml", os_render.dashboards_yml(), "0600", "1000:1000"),
+        ("config/opensearch_dashboards.yml", os_render.dashboards_yml(https=ctx.domain_mode), "0600", "1000:1000"),
         ("certs/node.pem", pki.read(paths["node"]), "0644", "1000:1000"),
         ("certs/node-key.pem", pki.read(paths["node_key"]), "0600", "1000:1000"),
         ("certs/root-ca.pem", pki.read(paths["ca"]), "0644", "root:root"),

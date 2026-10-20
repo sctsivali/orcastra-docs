@@ -17,6 +17,7 @@ The installer runs on the LXD host itself, as root.
 |---|---|
 | Host OS | Ubuntu 22.04 or 24.04. Other distributions get a warning and are untested |
 | LXD | 5.0 or newer, initialized (`lxd init`), with a storage pool and a managed bridge. The installer can create a new pool or bridge for you |
+| LXD cluster | Supported, MicroCloud included, from installer 1.0.0-RC4. Run it on the member that should hold the instances, see [LXD clusters and MicroCloud](#lxd-clusters-and-microcloud) |
 | Python | 3.8 or newer (`python3`), standard library only, nothing to `pip install` |
 | Host tools | `ip`, `ss`, `openssl`, `ssh`, `ssh-keygen` |
 | Virtual machines | `/dev/kvm` on the host. Without it, choose container instances |
@@ -48,14 +49,19 @@ are read from your terminal, so this works through the pipe.
 The wizard asks, offering a default for each:
 
 1. instance type: `vm` (default when `/dev/kvm` exists) or `container`
-2. storage pool: an existing pool, or a new name (then driver and size)
+2. storage pool: an existing pool, or a new name (then driver and size). On an LXD cluster
+   only an existing pool is accepted. A CephFS pool is refused everywhere, because it holds
+   shared file volumes and no instance disks
 3. network: a new dedicated bridge by default (`orcastrabr0`, then its gateway and prefix, defaulting to a free `10.x.0.1/24`), or an existing managed bridge
 4. a private IPv4 for each instance, defaulting to `.11` to `.14` in that subnet
 5. sizing profile
 6. the host address browsers will use, chosen from the addresses on the host
 7. the host port for each web endpoint (Authentik 9000, CMP 4321, CMP API 8765, OpenSearch Dashboards 5601)
 8. the admin email, and whether to type the `akadmin` password or let the installer generate one
-9. the Orcastra CMP release: `latest` (1.0.0-RC4-hotfix3), 1.0.0-RC4-hotfix2 or 1.0.0-RC4-hotfix1. Earlier
+9. whether to serve the web endpoints on public HTTPS hostnames through a Cloudflare Tunnel
+   (needed to list on OrcaHub, see [Public domain](#public-domain-cloudflare-tunnel)), and if so
+   the hostnames and the tunnel token; then whether to connect OrcaHub federation now
+10. the Orcastra CMP release: `latest` (1.0.0-RC4-hotfix3), 1.0.0-RC4-hotfix2 or 1.0.0-RC4-hotfix1. Earlier
    releases are not offered, because their frontend healthcheck follows the sign-in redirect
    to the public URL and the frontend restarts in a loop. When Docker Hub carries a newer
    release than the installer knows, the wizard says so
@@ -106,6 +112,10 @@ curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/instal
 | `HOST_ADDRESS` | address browsers use |
 | `PORT_AUTHENTIK`, `PORT_CMP`, `PORT_API`, `PORT_LOGS` | host ports of the web endpoints |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `akadmin` email and password (password generated when empty, and only accepted from the answer file, never as a flag) |
+| `PUBLIC_DOMAIN` | base domain for HTTPS through a Cloudflare Tunnel; empty or `none` serves plain HTTP on the host address |
+| `DOMAIN_CMP`, `DOMAIN_API`, `DOMAIN_SSO`, `DOMAIN_LOGS` | public hostnames, default `app.`, `api.`, `sso.` and `logs.` under `PUBLIC_DOMAIN` |
+| `CLOUDFLARE_TUNNEL_TOKEN` | the tunnel's token (answer file or environment only, never a flag; kept in `secrets.json`) |
+| `ORCAHUB_CLIENT_ID`, `ORCAHUB_DISCOVERY_URL`, `ORCAHUB_CLIENT_SECRET` | the OrcaHub federation client; the secret only from the answer file or environment. `none` as the client ID switches federation off |
 | `CMP_VERSION` | `latest` or a release such as `1.0.0-RC4-hotfix3` |
 | `IMAGE` | LXD image for the instances (default `ubuntu:24.04`) |
 | `FIX_HOST_FIREWALL` | `yes`, `no` or `ask`: whether the installer may change host settings, see [Host firewalls](#host-firewalls) |
@@ -138,7 +148,10 @@ The instances live in their own LXD project and use an `orcastra` profile (root 
 cloud-init). Each one keeps the address you chose through a static DHCP lease, with LXD's MAC
 and IPv4 filtering on its NIC so no instance can send with another one's address, starts on boot
 (Vault and the stores before the CMP), and carries a `user.orcastra.role` key. Instances are
-created one at a time.
+created one at a time, with `security.protection.delete`, so LXD refuses to delete them from
+any client, a CMP that manages this host included, until uninstall clears the flag. LXD only
+changes that flag on a stopped VM: on a deployment from an older installer the install and
+verify phases print the commands to protect each VM in a maintenance window.
 
 Configuration follows the manual guides, and the blocks the guides ask you to type (Vault
 policy, OpenSearch security files, pipeline, index templates, ISM policies, Fluent Bit files,
@@ -155,7 +168,10 @@ and the token the CMP uses for role sync.
 | Vault dashboard token | periodic (30 days), renewed by the watchdog | a token created with `-ttl=0` gets the 768h default and expires after 32 days |
 | OpenSearch certificates | created on the host exactly as in VM 3 Step 5, with the host address in the node certificate in place of `LOGS_DOMAIN` | the CA key stays on the host, under `pki/`, and never enters an instance |
 | CMP Fluent Bit CA | mounted by a small `docker-compose.orcastra.yml` next to the release compose | the release `docker-compose.prod.yml` does not mount `orcastra-logging-ca.pem` yet |
-| Dashboards session cookie | `opensearch_security.cookie.secure: false` | Dashboards is served over plain HTTP on the host address, and a secure cookie never reaches the browser over HTTP, so the login would loop |
+| Dashboards session cookie | `opensearch_security.cookie.secure: false`, unless a public domain is configured | Dashboards is served over plain HTTP on the host address, and a secure cookie never reaches the browser over HTTP, so the login would loop |
+| Cloudflare connector | in `orca-cmp` as a sandboxed systemd unit reading the token from a 0600 file, pinned cloudflared release, denied access to Vault and the host | the guide's `cloudflared service install <token>` puts the token on the service's command line, runs it as root and installs whatever version the apt repository carries |
+| Authentik trusted proxies | `orca-cmp` (the tunnel connector) and the host only | Authentik's default trusts every private range, so any LAN client could choose the address Authentik records |
+| Plain-HTTP forwards in domain mode | none | the guide keeps the IP ports as a fallback; they would bypass Cloudflare rules |
 | Dashboards sign-in through Authentik | not configured, sign in with `admin` | VM 3 Step 13 is optional and written for HTTPS domains (`LOGS_DOMAIN`, `AUTHENTIK_DOMAIN`), so follow it by hand once both have one |
 | Role-sync token | a service account limited to reading users and groups and moving users between the three role groups | the guide uses an `akadmin` token |
 | PostgreSQL and Redis on orca-cmp | bound to `127.0.0.1` | published ports bypass the guest firewall |
@@ -165,9 +181,11 @@ and the token the CMP uses for role sync.
 
 ## Network, firewall and SSH
 
-Browsers reach the four web endpoints on the host address through LXD network forwards. When
-that address already has a forward (another workload), the installer only adds its own ports
-to it and records exactly which ones. Vault is never forwarded.
+Browsers reach the four web endpoints on the host address through LXD network forwards (in
+[domain mode](#public-domain-cloudflare-tunnel), through the Cloudflare Tunnel instead, and
+nothing is published on the host address). When that address already has a forward (another
+workload), the installer only adds its own ports to it and records exactly which ones. Vault is
+never forwarded.
 
 The issuer URL has to be the same for the browser and for the CMP's own containers, so
 `orca-cmp` carries a NAT rule that sends traffic for the host address and Authentik port
@@ -227,6 +245,105 @@ changes in an unattended run, `FIX_HOST_FIREWALL=no` stops the install so you ca
 yourself. Uninstall reverts them (a lowered `vm.max_map_count` returns to its old value at the
 next reboot).
 
+## LXD clusters and MicroCloud
+
+The installer runs on a member of an LXD cluster, a MicroCloud included. Run it as root on the
+member that should hold the control plane; preflight names that member in its `LXD cluster`
+row and stops when the member is not `Online` (an evacuated member, for example).
+
+All four instances are created on that member. Their bridge exists only on that node, the
+member is the SSH bastion for the instances, and the forwards listen on its address, so the
+deployment cannot be spread over the cluster. Everything else follows from that:
+
+| Topic | On a cluster |
+|---|---|
+| Storage pool | must already exist. On MicroCloud, `local` keeps the instance disks on the member's own disk, so the control plane keeps running when Ceph does not. `remote` keeps them on Ceph, replicated across members, and the control plane stops whenever Ceph stops. `remote-fs` (CephFS) cannot hold instance disks |
+| New bridge | LXD defines a cluster network on every member, so `orcastrabr0` appears on all of them and every member must be reachable when it is created. Only the chosen member's copy carries traffic. The wizard checks the subnet against this member's routes only, so pick one that is free on every member |
+| Evacuation | the instances carry `cluster.evacuate=stop`. `lxc cluster evacuate <member>` stops the control plane instead of moving it to a member where its bridge and forwards do not exist, and `lxc cluster restore <member>` starts it again. Plan maintenance of that member as CMP downtime |
+| Registering the cluster in the CMP | the CMP then lists its own instances (project `orcastra`). They are protected from deletion, see [What it builds](#what-it-builds), but a delete attempt from the CMP stops the instance before LXD refuses it: start it again with `lxc start --project orcastra <name>` |
+| Later runs | run `orcastra-full` (status, re-runs, uninstall) on the same member. State, keys and the watchdog live there, and preflight refuses to resume a deployment from another member |
+| One deployment | per cluster, because preflight sees the instances of every member |
+
+Uninstall removes the bridge it created from every member.
+
+## Public domain (Cloudflare Tunnel)
+
+OrcaHub buyers open your CMP from the internet, and OrcaHub registers an `https://` callback on
+your Authentik hostname, so a deployment that lists on OrcaHub needs public HTTPS hostnames. The
+installer serves them through a remotely managed Cloudflare Tunnel; no inbound port is opened.
+
+What you need: a domain whose DNS is on Cloudflare, and a tunnel created in Cloudflare Zero Trust
+(Networks, Tunnels, Create a tunnel, Cloudflared). Copy its token: the long value starting with
+`eyJ` in the install command Cloudflare shows. Pasting the whole command line works too.
+
+The wizard asks for the base domain and the four hostnames. Use names one level below the zone
+(`app.example.com`, not `app.lab.example.com`): Cloudflare's free certificate does not cover a
+deeper level. Before the summary it prints the routes to add to the tunnel under **Published
+application routes** (older dashboards call them public hostnames):
+
+| Public hostname | Service | Note |
+|---|---|---|
+| CMP (`app.`) | `http://localhost:4321` | |
+| CMP API (`api.`) | `http://localhost:8765` | WebSockets on (the default) |
+| Authentik (`sso.`) | `http://<orca-authentik IP>:9000` | |
+| OpenSearch Dashboards (`logs.`) | `http://<orca-opensearch IP>:5601` | |
+
+The connector runs in `orca-cmp`, where the manual [domain guide](../operations/domain-setup.md)
+puts it, as `orcastra-cloudflared.service`. It is the pinned cloudflared release from GitHub,
+checked against its SHA-256, with self-update off; the token sits in a mode 0600 environment
+file and never on a command line. The installer waits for the connector to register, proves
+every route from the host through Cloudflare, and names the route that is missing or wrong.
+
+In domain mode every URL the deployment hands out follows the hostnames: the issuer and the
+redirect URI in Authentik, `NEXTAUTH_URL`, `NEXT_PUBLIC_API_URL` and `CORS_ORIGINS` in the CMP,
+the Dashboards session cookie (secure again) and the summary. The CMP's role sync still talks to
+Authentik on its private address. Nothing is published in plain HTTP on the host address: the
+tunnel is the only way in, so a Cloudflare Access or WAF rule on a hostname cannot be bypassed and
+no password crosses a network in clear text. The connector runs sandboxed (its own unprivileged
+user, a read-only system, no Docker socket, no deployment files) and cannot open a connection to
+Vault or to the LXD host, whatever route someone adds in the Cloudflare dashboard.
+
+!!! tip "Recommended on the public hostnames"
+    Put a [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/)
+    application in front of the Dashboards hostname, which only operators need, and give
+    `akadmin` a second factor in Authentik. Leave the CMP, API and SSO hostnames open to
+    buyers.
+
+A domain can be added to, or removed from, a running deployment: re-run the installer and answer
+the question, or pass `--public-domain none`. Removing it takes the connector away; the tunnel
+and its routes stay in your Cloudflare account until you delete them there.
+
+!!! warning "Cloudflare security rules and server-side calls"
+    The CMP's own containers fetch the issuer and its signing keys through the public SSO
+    hostname. A WAF rule, Bot Fight Mode or a strict Browser Integrity Check that challenges
+    non-browser clients breaks sign-in. The verify phase checks these calls; if it reports a
+    Cloudflare block on the SSO hostname, add a rule that skips those checks for it.
+
+## OrcaHub federation
+
+[OrcaHub federation](../operations/orcahub-federation-sso.md) lets buyers sign in to your CMP with
+their OrcaHub identity. The installer does Steps 1 to 3 of that guide through the Authentik API
+and proves the result from the outside. It needs domain mode.
+
+1. Ask OrcaHub for a federation client and give them the callback the installer prints:
+   `https://<DOMAIN_SSO>/source/oauth/callback/orcahub/`.
+2. Run `orcastra-full orcahub` and enter the client ID, the discovery URL and the client secret
+   OrcaHub issued (or answer the same question in the wizard, or set the `ORCAHUB_*` keys).
+
+It creates the OpenID Connect source `orcahub`, linking an existing user only by a verified
+email, binds the guide's verified-email policy to both source flows with policy engine mode
+ALL, and puts the **OrcaHub** button with its label on the login page. The gate is bound before
+the source is enabled, and the source uses PKCE (S256) when OrcaHub's discovery document offers
+it. Upstream groups are never accepted: the gate refuses a sign-in whose claims carry any group,
+because Authentik would create that group locally and the CMP grants roles by group name. Local
+roles stay assigned by your administrators. The phase then checks that the public login page
+offers OrcaHub and that its button reaches OrcaHub with your client ID and exactly the
+registered callback.
+
+`orcastra-full orcahub` again replaces the client (it asks for the secret each time).
+`orcastra-full orcahub --disable` removes the button and turns the source off; accounts created
+through it stay. Switch federation off before removing the domain.
+
 ## Files and credentials
 
 Everything the installer needs to manage the deployment is under `/var/lib/orcastra/`
@@ -274,6 +391,7 @@ The installer stays on the host as `orcastra-full`:
 | `orcastra-full verify` | the full end-to-end check, the same as the last install phase |
 | `orcastra-full unseal` | unseal Vault by hand (prompts for keys when they are not on the host) |
 | `orcastra-full credentials` | print URLs and logins |
+| `orcastra-full orcahub` | connect OrcaHub federation, or `--disable` it, see [OrcaHub federation](#orcahub-federation) |
 | `orcastra-full uninstall` | remove the deployment (asks you to type `orcastra`) |
 | `orcastra-full install` | re-run, resume, or apply a new host address or ports |
 
@@ -281,10 +399,12 @@ The installer stays on the host as `orcastra-full`:
 
 Run the same command again at any time. Finished phases are skipped, and a run that stopped
 part way resumes where it stopped. `--repair` re-runs every phase and changes nothing when
-nothing needs changing.
+nothing needs changing. A newer installer also replaces the `orcastra-full` command and the
+watchdog on the host, so day-2 commands always match the installer that last ran.
 
-The host address and the four host ports can change: re-run with the new values and the
-installer updates the issuer, the redirect URI, the CMP URLs, the NAT rule and the forwards.
+The host address, the four host ports and the public domain can change: re-run with the new
+values and the installer updates the issuer, the redirect URI, the CMP URLs, the NAT rule, the
+forwards and the tunnel connector.
 Settings the instances were built with (instance type, project, pool, network, addresses,
 sizes, CMP release) cannot change this way, and the installer refuses rather than leave the
 deployment half changed. Uninstall and install again to change them, or resize an instance
@@ -294,13 +414,14 @@ with `lxc config set` yourself.
 
 The verification phase (and `orcastra-full verify`) fails the run when any of these fails:
 
-- the four instances run with their addresses, and `ssh` works to each
+- the four instances run with their addresses (and a warning when one is not protected from deletion), and `ssh` works to each
 - the firewall matrix holds, including a probe container published on an unlisted port
 - Vault is unsealed on raft, and the dashboard token is periodic, renewable and not root
 - OpenSearch is green with no unassigned shard, over TLS verified by the private CA, with the five ISM policies and the dashboards, and no demo certificate
-- every public URL answers through the forwards, and the issuer seen there matches the CMP's
+- in domain mode, the Cloudflare connector is connected
+- every public URL answers (through the forwards, or through Cloudflare in domain mode), and the issuer seen there matches the CMP's
 - a sign-in from the CMP redirects to Authentik's authorize endpoint
-- from inside the CMP containers: Vault with the dashboard token, the Authentik API with the role-sync token, and the issuer through the NAT rule
+- from inside the CMP containers: Vault with the dashboard token, the Authentik API with the role-sync token, and the issuer through the NAT rule (or the public hostname in domain mode)
 - the Vault audit log and the CMP logs arrive in OpenSearch
 
 ## Uninstall
@@ -309,8 +430,9 @@ The verification phase (and `orcastra-full verify`) fails the run when any of th
 orcastra-full uninstall
 ```
 
-It deletes the four instances and all their data, the forwards or ports it added, the profile
-and project, and the pool and bridge only when it created them and nothing else uses them. It
+It clears the deletion protection, then deletes the four instances and all their data, the
+forwards or ports it added, the profile and project, and the pool and bridge only when it created
+them and nothing else uses them (on a cluster, the bridge goes from every member). It
 also removes the timer, the `orcastra-full` command, the SSH entries and any host firewall
 rules it added. `--keep-secrets` keeps `/var/lib/orcastra` under a dated name instead of
 deleting it.
@@ -324,4 +446,14 @@ deleting it.
 | `has no working DNS or internet egress` | NAT on the bridge, or a host firewall. See [Host firewalls](#host-firewalls) |
 | `Vault is already initialized but its unseal keys are not on this host` | restore `vault-init.json`, or delete `orca-vault` and re-run |
 | `These settings cannot change once instances exist` | see [Re-runs and changes](#re-runs-and-changes) |
+| `Network driver "physical" does not support forwards` in the wizard | installer 1.0.0-RC3 or earlier on a MicroCloud, whose OVN uplink is a managed physical network. Fixed in 1.0.0-RC4: run the one-liner again, it resumes |
+| `Existing deployment ... on member <name>` | the deployment lives on another cluster member. Run the installer there, see [LXD clusters and MicroCloud](#lxd-clusters-and-microcloud) |
+| `LXD cluster ... (Evacuated)` in preflight | restore the member with `lxc cluster restore <member>` first |
+| `cloudflared did not connect tunnel ...` | a revoked or mistyped token, or egress to Cloudflare blocked (TCP 443 and UDP 7844 from `orca-cmp`). `journalctl -u orcastra-cloudflared` in `orca-cmp` shows which |
+| `https://<host> does not reach ...: the hostname does not resolve` | the published application route for that hostname is missing in the tunnel |
+| `... Cloudflare answered 404` or `530` | the route points at another hostname, or its service URL is wrong; compare with the table the installer prints |
+| `... Cloudflare blocked the request (error code: 1010)` | a WAF, Bot Fight Mode or Browser Integrity Check rule; skip it for the hostname |
+| `OrcaHub federation needs a public HTTPS domain` | set up [domain mode](#public-domain-cloudflare-tunnel) first, or run `orcastra-full orcahub --disable` before removing the domain |
+| `OrcaHub sign-in must not carry group claims.` | OrcaHub sends a `groups` claim; their provider must use the no-groups profile mapping, see the federation guide |
+| `OrcaHub sign-in requires a verified email address.` | the OrcaHub account's email is not verified there, or the provider does not send a Boolean `email_verified` |
 | A login loop or an issuer error after changing the host address | re-run the installer with the new address so every URL is updated together |
