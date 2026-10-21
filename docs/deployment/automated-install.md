@@ -153,6 +153,12 @@ any client, a CMP that manages this host included, until uninstall clears the fl
 changes that flag on a stopped VM: on a deployment from an older installer the install and
 verify phases print the commands to protect each VM in a maintenance window.
 
+After starting an instance the installer waits for its cloud-init to finish, up to 45 minutes,
+and prints a progress line every five minutes. A first boot on a slow host or package mirror
+can take more than 20 minutes. Errors from cloud-init stop the run when the instance is new,
+because its first boot did not set it up. On an instance an earlier run already set up, for
+example during `--repair`, they only print a warning.
+
 Configuration follows the manual guides, and the blocks the guides ask you to type (Vault
 policy, OpenSearch security files, pipeline, index templates, ISM policies, Fluent Bit files,
 the CMP `.env`) are taken from those pages, so the two paths stay identical. Authentik is
@@ -444,6 +450,9 @@ deleting it.
 | `LXD is slow to answer` in the log | the LXD API took over two minutes on one call. The installer retries, but a host whose LXD log shows database timeouts needs attention first |
 | `Image pull failed ... rate limit` | Docker Hub's anonymous pull limit. Wait, or run `docker login` inside the instance, then re-run |
 | `has no working DNS or internet egress` | NAT on the bridge, or a host firewall. See [Host firewalls](#host-firewalls) |
+| `cloud-init did not finish cleanly on <instance>:` with nothing after the colon | installer 1.0.0-RC4 or earlier stopped without the reason on any non-zero exit of `cloud-init status --wait`, including a status read too early in the boot and a boot that only had warnings. Fixed in 1.0.0-RC5. With an older installer, run `lxc exec --project orcastra <instance> -- cloud-init status --long`. When it says `done` (warnings are fine), run the one-liner again: it resumes. When it lists errors, see the next rows |
+| `cloud-init did not finish on <instance> within 45 minutes` | a slow package mirror or host. Follow it with `lxc exec --project orcastra <instance> -- tail -f /var/log/cloud-init-output.log`, then run the installer again once `cloud-init status` there says `done` |
+| `cloud-init finished with errors on <instance>` or `cloud-init unit(s) ... failed` | the first boot of a new instance did not complete. The message prints the commands that show why. Fix the cause (often the network or a package mirror), delete that instance with the commands the message prints, and run the installer again: it creates the instance again |
 | `Vault is already initialized but its unseal keys are not on this host` | restore `vault-init.json`, or delete `orca-vault` and re-run |
 | `These settings cannot change once instances exist` | see [Re-runs and changes](#re-runs-and-changes) |
 | `Network driver "physical" does not support forwards` in the wizard | installer 1.0.0-RC3 or earlier on a MicroCloud, whose OVN uplink is a managed physical network. Fixed in 1.0.0-RC4: run the one-liner again, it resumes |

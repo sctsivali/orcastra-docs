@@ -21,8 +21,12 @@ class FakeLog:
 
 
 class FakeState:
-    def __init__(self, artifacts=None):
+    def __init__(self, artifacts=None, phases=None):
         self.artifacts = dict(artifacts or {})
+        self.phases = dict(phases or {})
+
+    def is_done(self, name):
+        return self.phases.get(name) == "done"
 
     def artifact(self, key):
         return self.artifacts.get(key)
