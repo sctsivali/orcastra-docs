@@ -42,6 +42,8 @@ Suspending stops the credential working on the next call and stops deliveries, w
 
 Uninstalling removes the credential, the signing secret, the stored settings, every webhook subscription and the delivery log, and revokes any elevated grant issued to that credential.
 
+An add-on granted `org.sync` can own OrcaHub organizations. While its credential is the only key able to keep one of them in sync, uninstalling answers `409 key_owns_organizations` and changes nothing: suspend it to stop it at once, then have an administrator transfer or delete those organizations first. See [Integration Keys and Organization Ownership](../operations/integration-keys.md#what-revoke-delete-and-uninstall-refuse).
+
 What it keeps is the audit trail. Those records are how you answer what the add-on did while it was installed, so deleting them would remove the evidence at the moment it is most likely to be wanted.
 
 !!! note "Uninstalling is not the same as the add-on being withdrawn"

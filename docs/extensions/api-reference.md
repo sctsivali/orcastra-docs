@@ -63,6 +63,7 @@ or a version.
 | Method | Path | Capability |
 |---|---|---|
 | GET | `/integrations/clusters` | `inventory.read` |
+| GET | `/integrations/clusters/failover` | `inventory.read` |
 | GET | `/integrations/projects` | `inventory.read` |
 | GET | `/integrations/instances` | `inventory.read` |
 | GET | `/integrations/instances/{name}` | `inventory.read` |
