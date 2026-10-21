@@ -4,6 +4,19 @@
 
 An OrcaHub connection authenticates to Orcastra CMP with an integration key: a public key ID (`oak_...`) and a secret (`oas_...`). The key ID is what Orcastra records as the owner of every organization that connection syncs. This page explains what ownership controls, how to rotate a secret without breaking it, how an administrator moves an organization to another key, and how to recover an organization whose owner key stopped working.
 
+## Availability
+
+This page describes the current development branch. Check which release your deployment runs (`APP_VERSION` in its `.env`, which selects the images it starts; see [Upgrading](upgrading.md)) against this table:
+
+| What | Available from |
+|---|---|
+| Ownership itself: only the owner key syncs, updates members and policies, and provisions for an organization | 1.0.0-RC4-hotfix2 and earlier |
+| **Rotate Secret** (dashboard and API) and the on-demand organization refresh | 1.0.0-RC4-hotfix2, with older rotation rules: a key's creator may rotate it whatever clusters it grants, there is no own-organization rule, and callback URLs are not tied to the secret |
+| The rotation rules and callback binding on this page, ownership on key cards and in **Synced Organizations**, **Transfer Owner**, the revoke and delete refusals, several owner keys and two-key enrollment | 1.0.0-RC4-hotfix3 |
+| Everything that depends on capabilities (`inventory.read`, `org.sync`, `tenant.provision`, the `key_cannot_sync` and `provisioning_would_stop` refusals), add-on credentials, `whoami`, and the `cluster_failover_config.v1` feature | Not released yet: development branch after 1.0.0-RC4-hotfix3 |
+
+On 1.0.0-RC4-hotfix3, which has neither capabilities nor add-ons, every condition on this page that names a capability or an add-on does not apply: any active OrcaHub key that is not the current owner can receive an organization.
+
 ---
 
 ## How ownership works
@@ -179,6 +192,9 @@ Co-ownership does not change who manages a key. Who may read, revoke, delete, ed
 Revoking, deleting or uninstalling a key, or withdrawing its `inventory.read` or `org.sync`, is refused only for organizations where it is the **only owner able to sync**: an active OrcaHub key holding both capabilities. Where another such owner exists, the end goes through: the key leaves those owner sets (revoke, delete, uninstall) or stays in them without being primary (a withdrawn capability), and the oldest able owner becomes the primary in the same step. If another owner's record cannot be read, or the owner sets cannot be saved, nothing changes and the answer is `503`. Withdrawing `tenant.provision` asks first only for organizations no other owner key provisions for.
 
 The owner sets are checked before the key is changed in Vault. If the database then fails to save them after the key was changed, the answer is `503` with "The key was changed, but the organizations it owns could not be updated." The key is already revoked, deleted or narrowed and stops working at once. Finish the change in **Synced Organizations > Owner Keys** on each organization the key owned: remove the key, or make another key the primary.
+
+!!! warning "Rolling back below 1.0.0-RC4-hotfix3"
+    Owner sets are stored by schema revision `015a_organization_owner_keys`, which every upgrade to 1.0.0-RC4-hotfix3 or later applies, whether or not several owner keys are turned on. An older release claims organizations without owner rows, which that revision refuses, so it is not forward-compatible: downgrade it first, from an image that ships it, before you start the older release. `rollback_release.sh` refuses `--skip-migrations` across it. See [Rolling back](upgrading.md#rolling-back).
 
 Each change to an owner set is recorded as `integration.organization.owner.add`, `.remove` or `.primary`, with the set before and after. An administrator's **Transfer Owner** still replaces the whole set with the new key; its answer lists the co-owners it removed (`removed_owner_key_ids`).
 

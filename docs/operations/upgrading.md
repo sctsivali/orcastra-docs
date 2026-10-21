@@ -192,6 +192,13 @@ loop, not as a downgrade. The script refuses rather than guessing, and `--skip-m
 forward-compatible, which `015_session_audit_bigint` is: it only widens three counters to
 bigint and older code reads a bigint column without complaint.
 
+`015a_organization_owner_keys` (1.0.0-RC4-hotfix3) is not. An older release claims an
+organization without its owner row, which that revision's foreign key refuses, so a rollback
+across it only trades a crash loop for failing claims. Downgrade it first, from an image that
+ships it (`docker exec orcastra-dashboard-backend alembic downgrade 015_session_audit_bigint`),
+then roll back without `--skip-migrations`. `scripts/rollback_release.sh` refuses
+`--skip-migrations` across it and changes nothing.
+
 **The cache has to be flushed.** Bodies written by the newer build carry fields the older
 models reject, and the hardware models are declared `extra="forbid"`, so an older process
 inflating one of those entries answers 500 for as long as it lives. The script clears the
