@@ -52,8 +52,11 @@ What this credential is installed as, what it reaches, and its resolved settings
 | GET | `/integrations/whoami` | none |
 | POST | `/integrations/validate` | none, credentials go in the body |
 
-A verified answer from either carries `features`, the optional contracts this installation supports
-(for example `organization_owner_keys.v1`), or `null` when it supports none.
+A verified answer from either carries `features`, the optional contracts this deployment supports:
+`organization_owner_keys.v1` while [several owner keys](../operations/integration-keys.md#several-owner-keys-per-organization)
+are turned on, and `cluster_failover_config.v1` where `/integrations/clusters/failover` exists. A
+release that supports none answers `null`. Check for the feature you need rather than for a list
+or a version.
 
 ### Inventory
 
