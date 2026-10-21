@@ -8,7 +8,7 @@ An OrcaHub connection authenticates to Orcastra CMP with an integration key: a p
 
 ## How ownership works
 
-An organization is claimed by the first key that syncs it, provisions tenant access for it, or pulls it with **Refresh organizations**. From then on, the owner key is the only key that may:
+An organization is claimed by the first key that syncs it, provisions tenant access for it, or pulls it through an organization refresh (see [Refresh organizations on demand](#refresh-organizations-on-demand)). From then on, the owner key is the only key that may:
 
 - sync the organization (name, slug and description),
 - update its members and their roles,
@@ -20,7 +20,18 @@ A push from any other key leaves the organization untouched, and provisioning an
 There is no "release". An owner is replaced by another key, never cleared, because an organization without an owner is open to whichever key names it next.
 
 !!! note "Add-on credentials"
-    An add-on granted the `org.sync` capability can own organizations too. When its installation rotates the credential, the organizations move to the new credential in the same step. Uninstalling the add-on is refused while its credential owns organizations; suspend the add-on to stop it at once.
+    An add-on granted the `org.sync` capability can own organizations too. When its installation rotates the credential, the organizations move to the new credential in the same step, so while the credential owns organizations only an administrator or a partner of the installation's organization may rotate it (or that organization's creator, when it was made in this dashboard rather than synced). Anyone else gets `403` with `error: not_a_partner_of_the_installation_organization`. Uninstalling the add-on is refused while its credential owns organizations; suspend the add-on to stop it at once.
+
+### Refresh organizations on demand
+
+A partner who manages a key can make Orcastra pull the organizations from that key's OrcaHub connection at once, instead of waiting for its next sync:
+
+```bash
+curl -X POST "https://<dashboard>/api/v1/integrations/refresh-organizations?api_key_id=<key_id>" \
+  -H "Authorization: Bearer <token>"
+```
+
+There is no dashboard control for it. Orcastra calls the connection's stored callback URL with the key's credential and records what it returns under that key's ownership, so the same rules as a sync apply. A key the caller cannot manage answers `404`. A revoked, inactive or expired key answers `409`, an add-on credential answers `409 key_is_add_on`, and a key without `inventory.read` and `org.sync` answers `409 key_cannot_sync`. A key whose current secret has not stored a callback URL answers `400` (see [Rotate a secret](#rotate-a-secret-without-changing-the-key-id)), and an unreachable or failing connection answers `502`.
 
 ---
 
@@ -57,10 +68,10 @@ Rotate the secret whenever a key's secret may have leaked, or on your regular sc
 
 The previous secret stops working at once on every backend worker while Redis is reachable: the rotation publishes the revocation there, and each worker checks it before trusting its cached copy of the key. Without Redis, a worker that cached the old secret keeps accepting it for up to about 30 seconds (`ORCASTRA_API_KEY_CACHE_TTL`), and a request already in flight completes either way. Until OrcaHub has the new secret, its syncs are refused with `401`.
 
-Callbacks follow the secret. Every request Orcastra makes to OrcaHub carries the key's credential: the member updates and the lifecycle webhook carry its secret, and **Refresh organizations** carries its hash. So Orcastra keeps the callback URL a sync stores together with a tag of the secret that sync used, and uses the URL only while that secret is still the key's secret. A rotation also clears the stored URL. A sync still running with the old secret cannot store a URL after the rotation, and a URL stored with the old secret never receives the new one. The OrcaHub connection stores its URL again on its first sync with the new secret. Until then, Orcastra sends no callbacks for the key, and **Refresh organizations** answers `400` "No callback URL is set for this API key's current secret".
+Callbacks follow the secret. Every request Orcastra makes to OrcaHub carries the key's credential: the member updates and the lifecycle webhook carry its secret, and an [organization refresh](#refresh-organizations-on-demand) carries its hash. So Orcastra keeps the callback URL a sync stores together with a tag of the secret that sync used, and uses the URL only while that secret is still the key's secret. A rotation also clears the stored URL. A sync still running with the old secret cannot store a URL after the rotation, and a URL stored with the old secret never receives the new one. The OrcaHub connection stores its URL again on its first sync with the new secret. Until then, Orcastra sends no callbacks for the key, and a refresh answers `400` "No callback URL is set for this API key's current secret".
 
 !!! note "After upgrading"
-    A callback URL stored by a release without this tag is not used. Each key's callbacks and **Refresh organizations** resume after its next sync, about 5 minutes on OrcaHub's default schedule.
+    A callback URL stored by a release without this tag is not used. Each key's callbacks and refreshes resume after its next sync, about 5 minutes on OrcaHub's default schedule.
 
 Who may rotate:
 
@@ -79,7 +90,7 @@ curl -X POST https://<dashboard>/api/v1/integrations/api-keys/<key_id>/rotate-se
   -H "Authorization: Bearer <token>"
 ```
 
-The response carries `api_key_id` (unchanged) and `api_key_secret` (new). A revoked, inactive or expired key answers `409`; create a new key instead. An add-on credential answers `409`; rotate it from its installation.
+The response carries `api_key_id` (unchanged) and `api_key_secret` (new). A revoked, inactive or expired key answers `409`; create a new key instead. An add-on credential answers `409`; rotate it from its installation (see [Add-on credentials](#how-ownership-works) for who may).
 
 A `503` answer says which of these happened:
 
@@ -111,7 +122,7 @@ curl -X PUT https://<dashboard>/api/v1/integrations/organizations/<org_id>/owner
   -d '{"api_key_id": "oak_...", "reason": "The old connection key was revoked"}'
 ```
 
-A move to the key that already owns the organization answers `200` with `"changed": false` and changes nothing. Otherwise the response names the previous owner and its state, the new owner, the clusters its access does not include (`uncovered_cluster_ids`), and how many organizations the new owner now claims.
+A move to the key that already owns the organization, when no other key shares it, answers `200` with `"changed": false` and changes nothing. A transfer always leaves the new key as the only owner, so a move to the primary of an organization with co-owners removes them and answers `"changed": true` (see [Several owner keys](#several-owner-keys-per-organization)). Otherwise the response names the previous owner and its state, the new owner, the clusters its access does not include (`uncovered_cluster_ids`), and how many organizations the new owner now claims.
 
 | Status | `error` | Cause |
 |---|---|---|
@@ -151,7 +162,7 @@ Withdrawing `tenant.provision` from a key that owns an active OrcaHub organizati
 In the dashboard, **Edit Capabilities** on the key's card shows the consequence when you save, and **Withdraw Anyway** confirms. The usual rules for who may edit the key apply. `inventory.read` and `org.sync` stay refused as above, with or without `force`.
 
 !!! note "The add-on reconcile sweep"
-    The sweep that revokes add-on credentials no installation claims, or whose organization reaches no cluster any more, still revokes them: such a credential must stop. Its audit record then names the organizations the revocation leaves frozen, so an administrator can transfer them.
+    The sweep that revokes add-on credentials no installation claims, or whose organization reaches no cluster any more, still revokes them: such a credential must stop. Its audit record then names the organizations the revocation leaves frozen, so an administrator can transfer them. A credential no installation claims is left alone until it is 10 minutes old, because an install or a rotation stores the key a moment before its installation is saved; the next sweep revokes it. Authentication refuses such a credential in the meantime.
 
 ---
 
@@ -159,7 +170,7 @@ In the dashboard, **Edit Capabilities** on the key's card shows the consequence 
 
 With `INTEGRATION_MULTI_OWNER_ENABLED=true` (off by default; needs a restart), an organization can be owned by up to five keys at once. Every key in its owner set may sync it, update its members and policies and provision tenant access for it. One of them is the **primary**: the key Orcastra calls OrcaHub back with. A provider with two OrcaHub connections to the same control plane can then use either one, and ending one key no longer freezes the organization.
 
-A key joins an owner set only by being vouched for: by an owner key that also holds the new key's secret (two-key enrollment, below), or by an administrator. Any key outside the set is refused exactly as before. While the setting is off, the routes below answer `404` before they authenticate the caller or read the body, `validate` reports no features, and every organization keeps the single owner it had.
+A key joins an owner set only by being vouched for: by an owner key that also holds the new key's secret (two-key enrollment, below), or by an administrator. Any key outside the set is refused exactly as before. While the setting is off, the routes below answer `404` as if they did not exist: the integration routes before they check the key or read the body, the administrator routes once the caller is signed in (an unauthenticated call answers `401`). `validate` then does not report `organization_owner_keys.v1`, and every organization keeps the single owner it had.
 
 Co-ownership does not change who manages a key. Who may read, revoke, delete, edit or rotate a key still follows the organizations the key claimed, was provisioned for or was transferred to, as with a single owner. A key that was enrolled or added by an administrator owns the organization but does not put it on its minter's side, so the partner who provisioned an organization cannot manage a key that the organization's founder enrolled there.
 
@@ -175,11 +186,13 @@ Each change to an owner set is recorded as `integration.organization.owner.add`,
 
 In **Synced Organizations**, the row action **Owner Keys** lists the set with its primary and each key's state, and offers **Add Owner Key**, **Make Primary** and **Remove**, each with a reason for the audit record. The last owner cannot be removed; use **Transfer Owner** instead. The same in the API, all administrator only:
 
-| Method | Path | Body | Refusals |
+| Method | Path | Body | Refusals of its own |
 |---|---|---|---|
-| POST | `/api/v1/integrations/organizations/<org_id>/owner-keys` | `{"api_key_id", "reason"}` | `409` the transfer codes above, `409 owner_set_full`, `409 organization_unclaimed` |
+| POST | `/api/v1/integrations/organizations/<org_id>/owner-keys` | `{"api_key_id", "reason"}` | `409` the transfer codes above, `409 owner_set_full` |
 | DELETE | `/api/v1/integrations/organizations/<org_id>/owner-keys/<key_id>?reason=...` | | `409 last_owner`, `409 no_able_owner`, `503` |
 | PUT | `/api/v1/integrations/organizations/<org_id>/primary-key` | `{"api_key_id", "reason"}` | `409 key_not_an_owner`, the transfer codes above |
+
+All three also answer `404` for an unknown organization, `409 organization_not_synced` for one created in Orcastra, and `409 organization_unclaimed` for one no key owns yet: give it its first owner with **Transfer Owner**.
 
 Each answers `{"organization_id", "organization_slug", "external_id", "primary_key_id", "owner_key_ids", "changed"}`. `GET /api/v1/integrations/organizations` lists each organization's `owner_keys` (key ID, name, state, expiry, whether it is the primary, how it joined) under the same visibility rule as the `owner_key_*` fields, and each key in `GET /api/v1/integrations/api-keys` carries `sole_owned_organization_count`.
 
@@ -209,7 +222,7 @@ Orcastra first checks that the calling key owns the organization. Only then does
 |---|---|---|
 | 403 | `not_an_owner` | The calling key does not own the organization, the organization does not exist or has no owner, or the calling key can no longer own it (ended, missing a sync capability, an add-on credential). |
 | 403 | `new_key_unverified` | No such key, or the secret is wrong (one sentence for both). After 5 failures for the same calling key and new key, that pair is locked out of enrollment for an hour. |
-| 403 | `new_key_outside_organization` | The new key was minted by someone who did not mint the calling key, did not create the organization and has not been a partner of it for at least 24 hours. An administrator can still add it. |
+| 403 | `new_key_outside_organization` | The new key's minter is not on the organization's side: neither a partner of the organization for at least 24 hours, nor the calling key's minter or the organization's creator while a partner, for at least 24 hours, of the calling key's own organization (the seller organization a sale proves, as for [rotation](#rotate-a-secret-without-changing-the-key-id)). Minting the calling key or creating the organization never counts alone, because a minter who left keeps the secrets it held. An administrator can still add the key. |
 | 409 | `owner_set_full` | The organization already has five owner keys. |
 | 409 | `target_key_*` | The new key could not own the organization (the transfer codes above). |
 | 422 | `same_key` | The new key is the calling key. |
