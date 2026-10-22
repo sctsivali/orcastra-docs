@@ -73,21 +73,31 @@ help: the host is protected only after it reboots into the fixed kernel.
 
 ### What Orcastra shows
 
-The dashboard checks the kernel every cluster member reports to LXD and marks the cluster card
-for Partners and Admins:
+The dashboard checks the kernel every cluster member reports to LXD and judges it against each
+advisory. Partners and Admins see the result on the cluster card as the number of CVEs still open
+on that cluster, such as "1 CVE" or "2 CVEs". A cluster whose members are all patched shows nothing
+on its card.
 
-- "Kernel Exposed" when the version is known to lack the fix, for example an Ubuntu kernel
-  while Ubuntu has published none;
-- "Kernel Unverified" when the version string cannot prove it either way, for example a
-  Debian, Red Hat or SUSE kernel whose backports are invisible in `uname -r`, or a member that
-  could not be read.
+An open CVE is in one of two states on a member:
 
-The badge opens every member of the cluster with its kernel, verdict and reason. The System tab
-of a cluster's details shows the verdict too, patched included. Exposed and unverified members
-also appear on the Host Kernels tab of Inventory > Warnings, behind a Host Kernels tile on the
-overview's System Alerts card, and through `GET /api/v1/security/kernel-advisories`. Tenants do
-not see any of them. Each result carries the command to run on the host and the date of the
-advisory data it was judged against.
+- Affected, when the version is known to lack the fix, for example an Ubuntu kernel while Ubuntu
+  has published none;
+- Unconfirmed, when the version string cannot prove it either way, for example a Debian, Red Hat
+  or SUSE kernel whose backports are invisible in `uname -r`, a vendor build such as a Jetson
+  `-tegra` kernel, or a member that could not be read.
+
+The chip's icon follows the worst state on the cluster. Pointing at the chip, or reaching it with
+the keyboard, lists each open CVE with its severity and how many members it affects. Clicking or
+tapping it opens every member of the cluster with its kernel, state and reason. The System tab of
+a cluster's details shows the result too, Patched included.
+
+Affected and unconfirmed members also appear on the Kernel CVEs tab of Inventory > Warnings, one
+row per member and CVE, with a CVE column to sort and filter on. A Kernel CVEs tile on the
+overview's System Alerts card links there. The tile and the tab count those rows, so one CVE on
+three members counts as three. `GET /api/v1/security/kernel-advisories` returns the same data,
+where the states are named `exposed`, `unverified` and `patched`. Tenants do not see any of them.
+Each result carries the command to run on the host and the date of the advisory data it was
+judged against.
 
 The Full installer's host preflight prints a `Kernel CVE-2026-99999` row. It passes when the
 host can prove the fix and warns otherwise, including when a fixed kernel is installed but not
