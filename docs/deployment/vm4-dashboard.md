@@ -186,7 +186,7 @@ lose data rather than features.
           postgres:
             condition: service_healthy
         # Resource limits. Settings > Dashboard Host reports these as the Backend Container
-        # figures, next to the machine's own under Host.
+        # figures, next to the machine's own under Host Machine.
         # Measured, not guessed: four uvicorn workers sat at 587/524/461/446 MB under QA load,
         # 2018 MB against a 2g cap, and the kernel OOM-killed two of them. That failure is silent
         # (RestartCount stays 0, the healthcheck passes, no ERROR line is logged) and shows up
@@ -659,7 +659,7 @@ DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastr
 # === Backend (port: 8765) ===
 # Uvicorn workers, and the caps that keep them from being OOM-killed silently. The three
 # values are what Settings > Dashboard Host shows under Backend Container (workers expected,
-# memory limit, CPU quota); the Host section above it is the machine itself.
+# memory limit, CPU quota); the Host Machine section above it is the machine itself.
 WEB_CONCURRENCY=4
 BACKEND_MEM_LIMIT=4g
 BACKEND_CPUS=2
