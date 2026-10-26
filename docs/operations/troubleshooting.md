@@ -502,7 +502,7 @@ vault status           # Verify: Sealed = false
 
 ### Node Registration Returns HTTP 503
 
-The Register Node page shows **"Registration Failed - HTTP 503"**. This means the backend cannot communicate with Vault.
+The Register Cluster page shows **"Registration Failed - HTTP 503"**. This means the backend cannot communicate with Vault.
 
 **Diagnosis - run on VM 4 (Dashboard):**
 
