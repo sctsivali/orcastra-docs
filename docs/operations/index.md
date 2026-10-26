@@ -76,4 +76,12 @@ This section covers post-deployment operations: domain configuration, networking
 
     [:octicons-arrow-right-24: Security Advisories](security-advisories.md)
 
+-   :material-map:{ .lg .middle } **Regions Map Basemap**
+
+    ---
+
+    The offline map the Regions page ships with, and how to use a tile provider instead
+
+    [:octicons-arrow-right-24: Regions Map Basemap](regions-basemap.md)
+
 </div>

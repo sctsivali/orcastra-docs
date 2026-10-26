@@ -684,6 +684,7 @@ BACKEND_TMPFS_SIZE=256m
 # Unset draws the outline map bundled in the image: no outbound request, no API key,
 # works air-gapped. Point MAP_TILE_URL at an XYZ template to use a provider instead.
 # Read at runtime, so a change needs a restart but no rebuild.
+# Every variable, validation and fallback: operations/regions-basemap.md
 MAP_TILE_URL=
 MAP_TILE_URL_DARK=
 MAP_TILE_ATTRIBUTION=

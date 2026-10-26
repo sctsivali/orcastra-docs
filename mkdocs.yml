@@ -167,6 +167,7 @@ nav:
       - Verification & Testing: operations/verification.md
       - Troubleshooting: operations/troubleshooting.md
       - Security Advisories: operations/security-advisories.md
+      - Regions Map Basemap: operations/regions-basemap.md
   - Extensions:
       - extensions/index.md
       - What An Add-on Is: extensions/overview.md
