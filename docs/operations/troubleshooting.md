@@ -250,6 +250,11 @@ curl -s --cacert ~/orcastra/certs/root-ca.pem https://localhost:9200/_cluster/he
 
 ### Fluent Bit Cannot Write to OpenSearch
 
+**Warnings > Host Health** in the dashboard shows this first. Its Logging Pipeline row reads Down when
+Fluent Bit keeps retrying an output without delivering a record, or has stopped reading container
+logs, even while Fluent Bit's own `/api/v1/health` answers `ok`. With `Retry_Limit no_limits` a retry
+never counts as failed, so that health endpoint cannot report a lost connection to OpenSearch.
+
 **Quick check (recommended) - create a local helper script and run it:**
 
 ```bash
@@ -481,6 +486,34 @@ printf '%s\n%s\n' '{"index":{}}' '{"@timestamp":"2026-01-01T00:00:00Z","msg":"ok
 
 ---
 
+### Fluent Bit Stopped Reading Container Logs
+
+**Symptom:** Host Health's Logging Pipeline row says Fluent Bit has stopped reading new logs, and
+this shows `1` for `tail.0`:
+
+```bash
+docker exec orcastra-dashboard-fluent-bit curl -s http://127.0.0.1:2020/api/v2/metrics/prometheus \
+  | grep ingestion_paused
+```
+
+**Cause:** the `rewrite_tag` emitters that sort logs into the access, audit and app streams buffered in
+memory, 10 MB each by default. When OpenSearch stops accepting logs, an emitter fills, Fluent Bit pauses
+the input feeding it, and Docker's log rotation deletes container logs that were never read.
+
+**Fix:** keep the emitter buffers on disk. Every `rewrite_tag` filter in
+`config/fluent-bit/fluent-bit.conf` should carry:
+
+```ini
+    Emitter_Storage.type   filesystem
+    Emitter_Mem_Buf_Limit  10M
+```
+
+Then recreate the container: `docker compose up -d --no-deps --force-recreate fluent-bit`. Records still
+held in memory are dropped by the restart. From then on the backlog waits on disk, bounded per output by
+`storage.total_limit_size`, and reading never stops. Restore delivery to OpenSearch so the backlog drains.
+
+---
+
 ## Vault Issues
 
 ### Vault is Sealed After Reboot
@@ -497,6 +530,18 @@ vault status           # Verify: Sealed = false
 
 !!! danger "Unseal Keys"
     Store unseal keys securely and separately. If 3+ keys are lost, Vault data is **permanently inaccessible**.
+
+From the dashboard, an Administrator can unseal without a shell on the Vault host. Open
+**Warnings > Host Health** (or select **Unseal Vault** on the sealed-Vault notice) and enter one key
+share at a time. Several key holders can each enter their own share from their own browser: the
+dialog shows the progress of the same attempt to everyone. Each share goes to Vault once and is not
+stored or logged by the dashboard. A wrong share discards the attempt, and everyone starts again.
+Set `VAULT_UNSEAL_UI_ENABLED=false` in the dashboard's `.env` to keep unsealing on the Vault host only.
+Use the dashboard's HTTPS address for this; the dialog warns when the page or the link to Vault is
+not encrypted.
+
+On a Vault running with high availability, every node unseals separately. The dashboard unseals only
+the node at `VAULT_ADDR`; unseal the others on their hosts.
 
 ---
 
