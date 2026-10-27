@@ -7,6 +7,10 @@ Everything on this page is the procedure, which does not change between releases
 specific to a version lives in the [release notes](#release-notes) table at the bottom, one
 row per release. Check that table, then follow the steps.
 
+[Releases](releases.md) lists every published release, its state (latest, supported,
+deprecated or end of life) and its image digests. The dashboard reads the same list and tells
+its Administrators when the running version is out of date.
+
 ---
 
 ## Before you start

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "product": "orcastra-cmp",
+  "generated_at": "2026-10-27T11:52:29Z",
+  "releases": [
+    {
+      "version": "1.0.0-RC4-hotfix3",
+      "status": "latest",
+      "released": "2026-10-09",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc4-hotfix3",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC4-hotfix3",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC4-hotfix3"
+      },
+      "digests": {
+        "backend": "sha256:02d0fcf2104e8a32cbb04fc4fcb90d337865a8f2ffc9beaf2ea8fcfc320e7093",
+        "frontend": "sha256:90cea512383a1bb75aba7ada5995ae0c71833655f7e7df7b56773d0fe9587862"
+      }
+    },
+    {
+      "version": "1.0.0-RC4-hotfix2",
+      "status": "deprecated",
+      "released": "2026-09-24",
+      "security": true,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc4-hotfix2",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC4-hotfix2",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC4-hotfix2"
+      },
+      "digests": {
+        "backend": "sha256:fde551e754b62b49841c098837df02acd33a1b23ffa4620ca5d746be13c95497",
+        "frontend": "sha256:b725cd340dacc28c25bbbc6ea42ac067c406cad9bc3eb9dc0761ba2316ac1141"
+      }
+    },
+    {
+      "version": "1.0.0-RC4-hotfix1",
+      "status": "deprecated",
+      "released": "2026-09-17",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc4-hotfix1",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC4-hotfix1",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC4-hotfix1"
+      },
+      "digests": {
+        "backend": "sha256:e6add7d85e1b4dc3f996c4061725da2ada3a9002139ed4e9f363e770be6273aa",
+        "frontend": "sha256:cb28e42ad88ebcdce2ef91888c99dc862de4a94ad197ae997db9965cacf47427"
+      }
+    },
+    {
+      "version": "1.0.0-RC4",
+      "status": "deprecated",
+      "released": "2026-08-28",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc4",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC4",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC4"
+      },
+      "digests": {
+        "backend": "sha256:6bdb949207b7f22b97591525025935b0735a22adf052189ef25554e849006d3a",
+        "frontend": "sha256:bb1cd50aae3ab8e0149415147dbff24681aa359c2a77615782b01934890692a0"
+      }
+    },
+    {
+      "version": "1.0.0-RC3",
+      "status": "end_of_life",
+      "released": "2026-08-02",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc3",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC3",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC3"
+      },
+      "digests": {
+        "backend": "sha256:75d1fd682d43fb05428f9205f250a5e476b5a8c01cb322c3ab22390dddb31663",
+        "frontend": "sha256:13b32516fca3759d893ce5b84961266f962323c0ab3b725c2ec0f43afec4b1bb"
+      }
+    },
+    {
+      "version": "1.0.0-RC2",
+      "status": "end_of_life",
+      "released": "2026-03-31",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc2",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC2",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC2"
+      },
+      "digests": {
+        "backend": "sha256:04af567fabc56589143d3f458ef58dbb3bc88be3d4708c8c3094c64f6f686a52",
+        "frontend": "sha256:55bd9c880648b815ab20f2f3ee6d1b1f41d5a4ada8f3b4c8a3e9722383121d38"
+      }
+    },
+    {
+      "version": "1.0.0-RC1",
+      "status": "end_of_life",
+      "released": "2026-03-13",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-0-rc1",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.0-RC1",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.0-RC1"
+      },
+      "digests": {
+        "backend": "sha256:83d7aaafb04c1e68011ede57466c17bf1b036706537e34e82b8770f7d4d39587",
+        "frontend": "sha256:4a1a53094dd3cc4a4792b37121eccdb90441a860117cff64652b26c9fcdb09d9"
+      }
+    }
+  ]
+}
