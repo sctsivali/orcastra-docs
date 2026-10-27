@@ -421,50 +421,67 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Add               cluster orcastra-dashboard
         Add               collector fluent-bit
 
+    # Emitters buffer on disk: in memory (10M default) a stalled output fills them, the tail input
+    # pauses and Docker rotates unread logs away.
     [FILTER]
         Name              rewrite_tag
         Match             docker.raw
         Rule              $log_type ^(access)$ log.access true
         Emitter_Name      emit_access
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             docker.raw
         Rule              $log_type ^(audit)$ log.audit true
         Emitter_Name      emit_audit
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             docker.raw
         Rule              $level .+ log.app true
         Emitter_Name      emit_app
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             docker.raw
         Rule              $message .+ log.app true
         Emitter_Name      emit_app_fallback
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             forward.raw
         Rule              $log_type ^(access)$ log.access true
         Emitter_Name      emit_fwd_access
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             forward.raw
         Rule              $log_type ^(audit)$ log.audit true
         Emitter_Name      emit_fwd_audit
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [FILTER]
         Name              rewrite_tag
         Match             forward.raw
         Rule              $level .+ log.app true
         Emitter_Name      emit_fwd_app
+        Emitter_Storage.type   filesystem
+        Emitter_Mem_Buf_Limit  10M
 
     [OUTPUT]
         Name              opensearch
+        Alias             access
         Match             log.access
         Host              ${OPENSEARCH_HOST}
         Port              ${OPENSEARCH_PORT}
@@ -490,6 +507,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
 
     [OUTPUT]
         Name              opensearch
+        Alias             audit
         Match             log.audit
         Host              ${OPENSEARCH_HOST}
         Port              ${OPENSEARCH_PORT}
@@ -519,6 +537,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
 
     [OUTPUT]
         Name              opensearch
+        Alias             app
         Match             log.app
         Host              ${OPENSEARCH_HOST}
         Port              ${OPENSEARCH_PORT}
