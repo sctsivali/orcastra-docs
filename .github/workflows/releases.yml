@@ -1,0 +1,40 @@
+name: Release manifest
+
+# Running dashboards read docs/releases/manifest.json to tell their Administrators about newer,
+# deprecated or end-of-life versions. Every change is validated and its images checked.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/releases/**"
+      - "docs/operations/releases.md"
+      - "scripts/releases/**"
+      - "installer/orcastra_full_install/topology.py"
+      - ".github/workflows/releases.yml"
+  pull_request:
+    paths:
+      - "docs/releases/**"
+      - "docs/operations/releases.md"
+      - "scripts/releases/**"
+      - "installer/orcastra_full_install/topology.py"
+      - ".github/workflows/releases.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate
+        run: python3 scripts/releases/manifest.py validate
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/releases -p "test_*.py"
+      - name: Images exist with the recorded digests
+        run: python3 scripts/releases/manifest.py check-images
