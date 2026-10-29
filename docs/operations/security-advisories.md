@@ -9,7 +9,7 @@ were checked, because vendor positions change after publication.
 
 ## CVE-2026-99999: guest-to-host flaw in the host kernel's IPv4 checksum path
 
-*Checked 2026-10-19.*
+*Checked 2026-10-29.*
 
 A packet that reaches the host's IPv4 stack with bad checksum metadata can make
 `skb_checksum_help()` corrupt the packet's network header after it was validated. A KVM guest
@@ -57,15 +57,15 @@ A branch missing from this table, such as 6.8, received no upstream fix. Distrib
 backport fixes without changing the upstream version, so on Ubuntu, Debian and Red Hat the
 version number alone does not answer the question. Use the checks below.
 
-### Vendor status on 2026-10-19
+### Vendor status on 2026-10-29
 
 | Vendor | Status |
 |---|---|
-| Ubuntu 22.04 (jammy) and 24.04 (noble) | "Needs evaluation" for every kernel package, no fixed version published |
-| Debian 12 (bookworm) | fixed in bookworm-security `6.1.190-1` (DLA-4841-1) |
+| Ubuntu 22.04 (jammy) and 24.04 (noble) | A fix is in testing ("pending") and not released yet: `linux` `5.15.0-203.213` on 22.04 and `6.8.0-149.149` on 24.04. Other kernel packages, such as the 6.8 HWE kernel on 22.04 and `linux-nvidia-tegra`, are still listed as needing a fix. Ubuntu rates the priority Medium |
+| Debian 12 (bookworm) | fixed in bookworm-security `6.1.190-1` (DLA-4841-1), and in the `linux-6.12` backport `6.12.113-1~deb12u1` (DLA-4850-1) |
 | Debian 13 (trixie) | fixed in trixie-security `6.12.113-1` (DSA-6568-1) |
-| Red Hat Enterprise Linux | all tracked product streams marked affected |
-| AWS | "There are no workarounds for this issue." Self-managed KVM hosts using virtio-net must patch |
+| Red Hat Enterprise Linux | fixed in RHEL 8 `kernel-4.18.0-553.178.1.el8_10` (RHSA-2026:89083), RHEL 9 `kernel-5.14.0-687.59.1.el9_8` (RHSA-2026:86033) and RHEL 10 `kernel-6.12.0-211.67.1.el10_2` (RHSA-2026:85321); RHEL 9 `kernel-rt` and RHEL 6 are still listed as affected |
+| AWS | "There are no workarounds for this issue." Amazon Linux has released fixed kernels; self-managed KVM hosts using virtio-net must patch |
 
 No vendor names a mitigation short of a fixed kernel. A sysctl, a firewall rule or turning off
 an offload is not a substitute, and a fixed kernel that is installed but not booted does not
@@ -80,8 +80,8 @@ on its card.
 
 An open CVE is in one of two states on a member:
 
-- Affected, when the version is known to lack the fix, for example an Ubuntu kernel while Ubuntu
-  has published none;
+- Affected, when the version is known to lack the fix, for example an Ubuntu kernel below Ubuntu's
+  fixed version, or while Ubuntu's fix is still in testing;
 - Unconfirmed, when the version string cannot prove it either way, for example a Debian, Red Hat
   or SUSE kernel whose backports are invisible in `uname -r`, a vendor build such as a Jetson
   `-tegra` kernel, or a member that could not be read.
@@ -96,8 +96,15 @@ row per member and CVE, with a CVE column to sort and filter on. A Kernel CVEs t
 overview's System Alerts card links there. The tile and the tab count those rows, so one CVE on
 three members counts as three. `GET /api/v1/security/kernel-advisories` returns the same data,
 where the states are named `exposed`, `unverified` and `patched`. Tenants do not see any of them.
-Each result carries the command to run on the host and the date of the advisory data it was
-judged against.
+Each result carries the command to run on the host and where its verdict came from: Ubuntu's
+record and when it was read, or the built-in advisory data and its date.
+
+Dashboards built from 2026-10-29 onward judge Ubuntu members by Ubuntu's own record of the CVE
+(`https://ubuntu.com/security/cves/CVE-2026-99999.json`), read every six hours: a released fix is
+compared with the running kernel, a fix still in testing reads as Affected, and so does a kernel
+package Ubuntu has not fixed yet. The Kernel CVEs tab says when Ubuntu was last checked, and
+Administrators can check again at once. When Ubuntu cannot be reached, the last verdict stays and
+says when Ubuntu was last checked.
 
 The Full installer's host preflight prints a `Kernel CVE-2026-99999` row. It passes when the
 host can prove the fix and warns otherwise, including when a fixed kernel is installed but not
@@ -185,11 +192,13 @@ the same host can reach the same path, so treat the host kernel as the thing to 
 
 ### Keeping this advisory current
 
-When Canonical publishes a fixed kernel, two places need its version: the dashboard's
-advisory data in `backend/app/services/kernel_advisory_data.py` of the dashboard repository
-(one entry per Ubuntu release and kernel series, then a deploy), and this page. The installer
-check reads package changelogs on the host, so it recognises a fixed Ubuntu kernel without a
-code change.
+For Ubuntu hosts the dashboard follows Ubuntu's published status by itself, so a fixed kernel
+needs no data change and no deploy. Other distributions are still judged by the advisory data in
+`backend/app/services/kernel_advisory_data.py` of the dashboard repository. A deployment without
+outbound access can point `KERNEL_CVE_FEED_URL` at a mirror, or turn the check off with
+`KERNEL_CVE_FEED_ENABLED=false`, in which case the built-in data decides. This page is updated by
+hand. The installer check reads package changelogs on the host, so it recognises a fixed Ubuntu
+kernel without a code change.
 
 ### References
 
