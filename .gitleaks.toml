@@ -1,0 +1,29 @@
+title = "orcastra-docs"
+
+[extend]
+useDefault = true
+
+# The guides write credentials as placeholders (fluentbit:<FB_PW>), shell or compose variables
+# (admin:$OPENSEARCH_PASS, admin:$$VAR) or sample text (admin:your-actual-password).
+[[allowlists]]
+description = "Placeholder credentials in documentation"
+targetRules = ["curl-auth-user"]
+regexes = ['''^["']?[A-Za-z0-9_.-]+:(<[A-Za-z0-9_]+>|\$\$?\{?[A-Za-z_][A-Za-z0-9_]*\}?|your-[a-z-]*password)["']?$''']
+
+# The OpenSearch Dashboards setup script pins saved-object IDs that its ndjson files reference.
+[[allowlists]]
+description = "OpenSearch index pattern IDs"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''setup_opensearch_dashboards\.sh$''']
+regexTarget = "line"
+regexes = ['''[A-Z_]+_PATTERN_ID="''']
+
+# A made-up Cloudflare Tunnel token; the test file says what it decodes to.
+[[allowlists]]
+description = "Synthetic tunnel token in installer tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''installer/tests/test_full_public\.py$''']
+regexTarget = "line"
+regexes = ['''TOKEN = "eyJ''']
