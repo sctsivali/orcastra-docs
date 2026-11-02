@@ -21,7 +21,7 @@ from orcastra_full_install.phases import p02_wizard, p05_instances, p12b_tunnel,
 TOKEN = "eyJhIjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYiLCJ0IjoiMDAwMDAwMDAtMTExMS00MjIyLTgzMzMtNDQ0NDQ0NDQ0NDQ0IiwicyI6ImMzbHVkR2hsZEdsakxYUmxjM1F0YjI1c2VRPT0ifQ"
 DOMAIN = {"PUBLIC_DOMAIN": "example.com", "DOMAIN_CMP": "app.example.com", "DOMAIN_API": "api.example.com",
           "DOMAIN_SSO": "sso.example.com", "DOMAIN_LOGS": "logs.example.com"}
-BASE = {"HOST_ADDRESS": "192.168.20.143", "PORT_AUTHENTIK": "9000", "PORT_CMP": "4321",
+BASE = {"HOST_ADDRESS": "192.168.1.50", "PORT_AUTHENTIK": "9000", "PORT_CMP": "4321",
         "PORT_API": "8765", "PORT_LOGS": "5601"}
 
 
@@ -43,7 +43,7 @@ class DomainValues(unittest.TestCase):
             self.assertIsNotNone(C.v_tunnel_token(bad))
 
     def test_hostnames_and_urls(self):
-        for ok in ("app.example.com", "lab-sso.fossgo.id", "cmp.partner.co.id"):
+        for ok in ("app.example.com", "lab-sso.example.net", "cmp.partner.co.id"):
             self.assertIsNone(C.v_fqdn(ok))
         for bad in ("App.example.com", "localhost", "10.0.0.1", "-a.example.com", "a..b.com"):
             self.assertIsNotNone(C.v_fqdn(bad))
@@ -62,7 +62,7 @@ class DomainValues(unittest.TestCase):
     def test_public_urls_follow_domain_mode(self):
         ip = full_ctx(BASE)
         self.assertFalse(ip.domain_mode)
-        self.assertEqual(ip.public_url("cmp"), "http://192.168.20.143:4321")
+        self.assertEqual(ip.public_url("cmp"), "http://192.168.1.50:4321")
         dom = full_ctx({**BASE, **DOMAIN})
         self.assertTrue(dom.domain_mode)
         self.assertEqual(dom.public_url("cmp"), "https://app.example.com")

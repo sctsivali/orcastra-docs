@@ -125,7 +125,7 @@ Set these in the backend's environment (`.env` beside the compose file):
 |----------|---------|--------|
 | `RELEASE_CHECK_ENABLED` | `true` | `false` stops the reads and the notice. |
 | `RELEASE_FEED_URL` | empty | An `https` URL of your own copy of `manifest.json`, read instead of the published list. |
-| `RELEASE_FEED_PRIVATE_CIDRS` | empty | Comma-separated private networks that copy may resolve to, for example `10.20.0.0/16`. Used only with `RELEASE_FEED_URL`. |
+| `RELEASE_FEED_PRIVATE_CIDRS` | empty | Comma-separated private networks that copy may resolve to, for example `192.168.1.0/24`. Used only with `RELEASE_FEED_URL`. |
 
 A deployment without internet access can keep a copy of `manifest.json` on a host it reaches over
 `https`, set `RELEASE_FEED_URL` to it, and update the copy when a release is published.

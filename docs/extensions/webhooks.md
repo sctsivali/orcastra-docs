@@ -36,7 +36,7 @@ The version is in the name rather than only in the envelope, so a subscription s
   "installation_id": 7,
   "sequence": 1757068800123,
   "data": {
-    "cluster_id": "nuc2",
+    "cluster_id": "cluster-a",
     "project": "tenant-a",
     "resource_type": "INSTANCE",
     "resource_name": "web-01",

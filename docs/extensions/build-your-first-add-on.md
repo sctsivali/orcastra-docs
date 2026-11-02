@@ -122,7 +122,7 @@ A working credential answers with what your installation currently holds:
   "extension": {"slug": "acme-backup", "name": "Acme Backup", "version": "1.0.0"},
   "organization": {"id": 3, "slug": "acme"},
   "granted_capabilities": ["inventory.read", "lxd.proxy"],
-  "granted_scope": [{"cluster_id": "nuc2", "permissions": ["write"], "projects": ["default"]}],
+  "granted_scope": [{"cluster_id": "cluster-a", "permissions": ["write"], "projects": ["default"]}],
   "settings": {"retention_days": 7, "api_token": "..."},
   "credential_generation": 1
 }

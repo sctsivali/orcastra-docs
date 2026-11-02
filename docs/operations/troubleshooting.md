@@ -640,24 +640,27 @@ Docker containers on VM 4 run inside a Docker bridge network, which is itself in
 
 **Architecture:**
 ```
-LXD Host (142.x.x.x)
-└── lxdbr0 bridge (10.1.1.0/24)
-    ├── prod-vault (10.1.1.39)         ← Vault HTTP :8200
-    └── prod-orcastra-dashboard (10.1.1.X)
+LXD host (<LXD_HOST_IP>)
+└── lxdbr0 bridge (<LXD_BRIDGE_CIDR>)
+    ├── vault (<VM2_PRIVATE_IP>)       ← Vault HTTP :8200
+    └── dashboard-vm (<VM4_PRIVATE_IP>)
         └── Docker bridge (172.17.0.0/16)
-            ├── backend container      ← needs to reach 10.1.1.39
+            ├── backend container      ← needs to reach <VM2_PRIVATE_IP>
             ├── frontend, postgres, redis
 ```
+
+Replace `<VM2_PRIVATE_IP>` in the commands below with the Vault container's address on the
+LXD bridge (`lxc list` on the LXD host shows it).
 
 **Test connectivity:**
 ```bash
 # From LXD container (should work)
-curl -s http://10.1.1.39:8200/v1/sys/health
+curl -s http://<VM2_PRIVATE_IP>:8200/v1/sys/health
 
 # From Docker container (may fail if routing is broken)
 docker exec orcastra-dashboard-backend python3 -c "
 import requests
-resp = requests.get('http://10.1.1.39:8200/v1/sys/health', timeout=5)
+resp = requests.get('http://<VM2_PRIVATE_IP>:8200/v1/sys/health', timeout=5)
 print(resp.status_code, resp.json())
 "
 ```
@@ -744,16 +747,14 @@ Console shows repeated `WebSocket connection to 'wss://api.orcastra.io/api/v1/mo
 
     The monitoring WebSocket requires authentication via a `?token=` query parameter (browsers cannot set headers on WebSocket connections).
 
-    If using an older frontend image that doesn't pass the token, rebuild and redeploy:
+    An older frontend image does not pass the token. Move the deployment to a current release
+    as described in [Upgrading a Deployment](upgrading.md). The backend and frontend images come
+    from the same release, so set `APP_VERSION` and `API_VERSION` in `.env` to that release and
+    pull both:
     ```bash
-    # On dev VM
-    docker compose build frontend
-    docker tag <image> svlct/orcastra-dashboard:frontend-latest
-    docker push svlct/orcastra-dashboard:frontend-latest
-
-    # On production VM
-    docker compose -f docker-compose.prod.yml pull frontend
-    docker compose -f docker-compose.prod.yml up -d frontend
+    # On VM 4, in the directory that holds docker-compose.prod.yml and .env
+    docker compose -f docker-compose.prod.yml pull backend frontend
+    docker compose -f docker-compose.prod.yml up -d backend frontend
     ```
 
 === "Backend Auth Middleware Blocking WebSocket"
