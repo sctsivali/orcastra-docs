@@ -44,14 +44,19 @@ every restart) and uploads fail.
 
 ## Step 3: Get the Docker Compose File
 
-Fetch the compose file that belongs to the release you are deploying. Pin the tag rather
-than taking `main`: the compose file and the images are versioned together, and a compose
-file newer than your images can reference variables those images ignore.
+Fetch the compose file that belongs to the release you are deploying. The compose file and
+the images are versioned together, and a compose file newer than your images can reference
+variables those images ignore, so use the copy for the exact release you pin in `.env`.
+
+Each release's compose file is published in this documentation repository under
+`installer/orcastra_full_install/assets/cmp/<version>/`, unchanged from the release. The
+versions published there are `1.0.0-RC4-hotfix1`, `1.0.0-RC4-hotfix2` and `1.0.0-RC4-hotfix3`.
+Earlier releases are not published there; deploy one of these instead.
 
 ```bash
-RELEASE=v1.0.0-RC4
+VERSION=1.0.0-RC4-hotfix3
 curl -fsSL -o docker-compose.prod.yml \
-  "https://raw.githubusercontent.com/sctsivali/orcastra-cmp/${RELEASE}/docker-compose.prod.yml"
+  "https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/orcastra_full_install/assets/cmp/${VERSION}/docker-compose.prod.yml"
 ```
 
 Confirm you got the whole file rather than a 404 page:

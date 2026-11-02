@@ -19,8 +19,7 @@ Set these once and reuse them:
 
 ```bash
 cd /opt/orcastra-dashboard          # wherever docker-compose.prod.yml and .env live
-VERSION=1.0.0-RC4                   # the release you are moving to
-RELEASE=v${VERSION}                 # the matching git tag
+VERSION=1.0.0-RC4-hotfix3           # the release you are moving to
 ```
 
 ## Step 1: Preflight
@@ -33,8 +32,12 @@ the one you are running:
 
 ```bash
 curl -fsSL -o docker-compose.prod.yml.new \
-  "https://raw.githubusercontent.com/sctsivali/orcastra-cmp/${RELEASE}/docker-compose.prod.yml"
+  "https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/orcastra_full_install/assets/cmp/${VERSION}/docker-compose.prod.yml"
 ```
+
+The compose files are published for `1.0.0-RC4-hotfix1`, `1.0.0-RC4-hotfix2` and
+`1.0.0-RC4-hotfix3`. Releases before those have no published compose file, so a move must
+target one of them.
 
 Then run whatever preflight tooling your team keeps on the deployment VM against it. Operator
 tooling is not distributed from this repository: it holds credentials paths and deployment
