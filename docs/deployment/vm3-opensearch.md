@@ -1193,10 +1193,10 @@ cat certs/root-ca.pem    # public, safe to copy
 
 ## Step 12: Import Dashboard Templates
 
-<!-- Maintainers: the five files under docs/assets/opensearch-dashboards/ are copied from
-     orcastra-cmp (config/opensearch-dashboards/*.ndjson and scripts/setup_opensearch_dashboards.sh,
-     at f5b8986). When a dashboard changes, replace the file and regenerate SHA256SUMS in the same
-     commit: `cd docs/assets/opensearch-dashboards && sha256sum *.ndjson setup_opensearch_dashboards.sh > SHA256SUMS`.
+<!-- Maintainers: the five files under docs/assets/opensearch-dashboards/ are the source of truth
+     for the dashboard templates and their import script (orcastra-cmp stopped carrying copies on
+     2026-11-03). When a dashboard changes, replace the file here and regenerate SHA256SUMS in the
+     same commit: `cd docs/assets/opensearch-dashboards && sha256sum *.ndjson setup_opensearch_dashboards.sh > SHA256SUMS`.
      The copy-and-paste blocks below include the files at build time, so they never drift. -->
 
 Import four pre-built dashboards and their index patterns:
