@@ -23,6 +23,10 @@ The version is in the name rather than only in the envelope, so a subscription s
 !!! warning "The stream is not a complete record of everything that happens"
     Events describe actions taken through Orcastra. An operator running `lxc` directly on a cluster changes the same resources and produces no event. Treat the stream as a prompt to act, not as the only source of truth, and reconcile against the inventory API periodically.
 
+## Which events an installation receives
+
+An installation receives an instance, project or volume event when its grant reaches the event's project on that cluster, which means the grant names the project or holds `*`. A grant without a project list reaches `default` only. On a cluster that another organization also uses, the grant is first narrowed to the projects the installer can see there, the same narrowing its credential gets; an installation an administrator made is not narrowed. A project deletion goes to the installations of the organizations that held the project. Events about the installation itself always arrive.
+
 ## The envelope
 
 ```json
@@ -94,7 +98,7 @@ stateDiagram-v2
     Queued --> Retrying: failed, attempts remain
     Retrying --> Delivered: a later attempt succeeded
     Retrying --> GaveUp: attempts exhausted
-    Queued --> Withheld: installation no longer reaches that cluster
+    Queued --> Withheld: installation no longer reaches that cluster or project
     GaveUp --> [*]
     Delivered --> [*]
     Withheld --> [*]
@@ -111,7 +115,7 @@ stateDiagram-v2
 
 Answer `2xx` quickly and work afterwards. A slow success holds a connection for as long as you take.
 
-**Withheld** means the delivery was never sent, because the installation stopped reaching that cluster between the event happening and the delivery going out. It is the revocation working rather than an outage.
+**Withheld** means the delivery was never sent, because the installation stopped reaching that cluster, or its grant stopped naming that project, between the event happening and the delivery going out. It is the revocation working rather than an outage.
 
 ## Endpoint requirements
 
