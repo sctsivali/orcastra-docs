@@ -744,7 +744,9 @@ RATE_LIMIT_WINDOW_SECONDS=60
 SECURITY_PROBE_BLOCK_ENABLED=true
 # Hosts allowed to set the client IP headers. Narrow this to your real proxies (for example
 # 127.0.0.0/8,::1/128 plus the Docker network): every private range listed here lets a
-# client on it choose its own address for rate limiting and audit.
+# client on it choose its own address for rate limiting and audit. A value set here replaces
+# the built-in list instead of adding to it (loopback is always trusted), and the backend logs
+# a warning at startup when its own Docker network is not in it.
 TRUSTED_PROXY_CIDRS=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7,fe80::/10
 ALLOW_PRIVATE_FORWARDED_IPS=false
 FORWARD_CLIENT_IP_HEADERS=true
