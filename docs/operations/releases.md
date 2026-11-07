@@ -129,3 +129,33 @@ Set these in the backend's environment (`.env` beside the compose file):
 
 A deployment without internet access can keep a copy of `manifest.json` on a host it reaches over
 `https`, set `RELEASE_FEED_URL` to it, and update the copy when a release is published.
+
+## Hypervisor versions on cluster cards {#hypervisor-versions}
+
+Partners and Administrators see a verdict beside each cluster's Hypervisor Version: **Latest** or
+**Latest LTS**, **Update Available**, **Newer than stable**, or **Not checked**. It compares the
+cluster with the newest stable release on the cluster's own track. A cluster on LXD 5.21 LTS is
+compared with the `5.21/stable` channel. A newer track, such as the 6.x feature track, is mentioned
+in the (i) beside the verdict and is not offered as an update.
+
+One backend worker reads two public sources every 6 hours:
+
+- `https://api.snapcraft.io/v2/snaps/info/lxd` lists every LXD snap track. MicroCloud clusters run
+  the same LXD snap.
+- `https://api.github.com/repos/lxc/incus/git/matching-refs/tags/v` lists the Incus releases. The
+  newest X.0.Z of each major corresponds to Zabbly's `lts-X.0` repository, and the newest tag
+  overall to `stable`.
+
+Each request carries the User-Agent `Orcastra-CMP-hypervisor-release-check/1` and no information
+about your clusters, versions or hosts. Redirects are followed only within the same host. After a
+failed read the worker tries again after 1, 2 and 4 hours, then every 12 hours, and keeps using the
+last good list for up to seven days. After that, and whenever a version or track cannot be placed,
+cards read **Not checked**, with the reason in the (i).
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `HYPERVISOR_RELEASE_CHECK_ENABLED` | `true` | `false` stops the reads, and cards show no verdict at all. |
+| `HYPERVISOR_RELEASE_CHECK_INTERVAL_HOURS` | `6` | How often both sources are read, from 1 to 48. |
+
+Without internet access, set `HYPERVISOR_RELEASE_CHECK_ENABLED=false`. If the check stays on and the
+two hosts are blocked, cards read **Not checked**.
