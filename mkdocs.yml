@@ -160,6 +160,7 @@ nav:
       - operations/index.md
       - Upgrading a Deployment: operations/upgrading.md
       - Releases: operations/releases.md
+      - Running on Incus: operations/incus.md
       - Integration Keys & Ownership: operations/integration-keys.md
       - ORCA Agent Installer: operations/orca-agent-install.md
       - OrcaHub Federation (Partner SSO): operations/orcahub-federation-sso.md
