@@ -159,6 +159,7 @@ nav:
   - Operations:
       - operations/index.md
       - Upgrading a Deployment: operations/upgrading.md
+      - Operational Events: operations/operational-events.md
       - Releases: operations/releases.md
       - Running on Incus: operations/incus.md
       - Integration Keys & Ownership: operations/integration-keys.md
