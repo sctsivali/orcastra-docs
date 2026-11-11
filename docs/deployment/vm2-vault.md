@@ -227,13 +227,13 @@ vault token create \
   -display-name="orcastra-dashboard"
 ```
 
-!!! warning "No dashboard token stays valid on its own"
+!!! warning "Create a periodic token, never `-ttl=0`"
     A non-root token created with `-ttl=0` is not permanent. Vault gives it the default
     lease of 768h, so it expires after 32 days (`vault token lookup` shows the
-    `expire_time`). The backend never renews its token, so once it expires every Vault call
-    returns `403` and cluster registration and certificate issuance stop. Create a periodic
-    token as above and renew it on a schedule, see
-    [Renew the Dashboard Token](#renew-the-dashboard-token). Each renewal resets the 30-day
+    `expire_time`) and cannot be renewed past that. Once it expires every Vault call returns
+    `403`: clusters show Error, certificates cannot be issued and integration API keys are
+    refused. Create a periodic token as above. From 1.0.0-RC5 the backend renews it itself,
+    see [Renew the Dashboard Token](#renew-the-dashboard-token); each renewal resets the 30-day
     period, and the token keeps the `default` policy that allows it to renew itself.
 
 ### Verify Dashboard Token Permissions
@@ -261,8 +261,16 @@ No value found at secret/metadata/integrations/api_keys
 
 ### Renew the Dashboard Token
 
-Once the dashboard `.env` exists on **VM 4** ([Step 6 there](vm4-dashboard.md)), add a daily
-job on VM 4 that renews the token:
+From 1.0.0-RC5 the dashboard backend renews a periodic token itself: one worker checks the token
+every hour (`VAULT_TOKEN_RENEW_CHECK_SECONDS`) and renews it once less than half its period is
+left. A token it cannot renew, or not past its maximum lifetime, is reported a week ahead as the
+[Vault token expiring](../operations/operational-events.md#vault-token-expiring) event, and a
+token Vault refuses as [Vault token refused](../operations/operational-events.md#vault-token-refused).
+`VAULT_TOKEN_RENEW_ENABLED=false` turns the renewal off.
+
+On 1.0.0-RC4 and earlier, which do not renew the token, add a daily job on VM 4 once the
+dashboard `.env` exists there ([Step 6 there](vm4-dashboard.md)). It is harmless to keep after
+upgrading:
 
 ```bash
 cat > /etc/cron.daily/orcastra-vault-token-renew << 'RENEW'
@@ -279,6 +287,47 @@ chmod 700 /etc/cron.daily/orcastra-vault-token-renew
 ```
 
 The [automated installer](automated-install.md) renews it from the LXD host instead.
+
+### Regenerate the Vault Root Token
+
+Replacing the dashboard token needs a token allowed to create tokens, normally the root token. If
+no working copy is left, generate a new root token with a quorum of unseal keys (3 of 5 by
+default). Vault 2.0 and later answer `sys/generate-root` only with a valid token as well, so open
+it for the few minutes this takes and close it again; meanwhile anyone who reaches Vault can start
+or cancel an attempt, but cannot finish one without the keys. On Vault 1.x skip the first and the
+last block.
+
+```bash
+export VAULT_ADDR='http://127.0.0.1:8200'
+CFG=/etc/vault.d/vault.hcl
+cp -a "$CFG" "$CFG.bak-$(date +%Y%m%d-%H%M)"
+echo 'enable_unauthenticated_access = ["generate-root"]' >> "$CFG"
+systemctl kill -s HUP vault; sleep 2; vault status | grep Sealed
+```
+
+The reload keeps Vault unsealed. Start an attempt, keeping the one-time password in a shell
+variable rather than on screen:
+
+```bash
+vault operator generate-root -cancel
+OTP=$(vault operator generate-root -init -format=json | python3 -c 'import sys,json; print(json.load(sys.stdin)["otp"])')
+```
+
+Run `vault operator generate-root` once per key holder, entering a different unseal key each time.
+The last one prints `Encoded Token`. Decode it, and check the result without printing it:
+
+```bash
+read -rp 'Encoded Token: ' ENC; vault operator generate-root -decode="$ENC" -otp="$OTP"; unset ENC OTP
+read -rsp 'Root token: ' RT; echo; VAULT_TOKEN="$RT" vault token lookup -format=json | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["policies"])'; unset RT
+```
+
+Keep the root token in a password manager, not on the host, and close the endpoint again:
+
+```bash
+sed -i '/^enable_unauthenticated_access/d' "$CFG"
+systemctl kill -s HUP vault; sleep 2
+vault operator generate-root -status    # must answer 403 again
+```
 
 ---
 
