@@ -20,13 +20,10 @@ def overrides(ctx) -> Dict[str, str]:
         "APP_VERSION": ver,
         "API_VERSION": ver,
         "POSTGRES_PASSWORD": pg,
-        # bound to loopback: Docker-published ports bypass the guest firewall's INPUT rules
-        "POSTGRES_PORT": "127.0.0.1:5432",
         "DATABASE_URL": f"postgresql+asyncpg://orcastra:{pg}@postgres:5432/orcastra_dashboard",
         "NEXT_PUBLIC_API_URL": ctx.public_url("api"),
         "VAULT_ADDR": f"http://{ctx.ip('vault')}:8200",
         "VAULT_TOKEN": s.get("vault_dashboard_token"),
-        "REDIS_PORT": "127.0.0.1:6381",
         "CORS_ORIGINS": ctx.public_url("cmp"),
         # only the CMP's own proxies may set client-IP headers (LXD forwards keep the real
         # client address, so a LAN client must not be trusted as a proxy)

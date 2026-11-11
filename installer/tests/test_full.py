@@ -154,8 +154,10 @@ class Rendering(unittest.TestCase):
         lines = [l for l in env.splitlines() if l and not l.startswith("#")]
         self.assertFalse([l for l in lines if "<" in l])
         kv = dict(l.split("=", 1) for l in lines)
-        self.assertEqual(kv["POSTGRES_PORT"], "127.0.0.1:5432")
-        self.assertEqual(kv["REDIS_PORT"], "127.0.0.1:6381")
+        # Postgres and Redis stay on the compose file's loopback default; an explicit address
+        # here is how a template value once published them on every interface.
+        for key in ("POSTGRES_PORT", "REDIS_PORT", "POSTGRES_BIND", "REDIS_BIND"):
+            self.assertNotIn(key, kv)
         self.assertTrue(kv["AUTHENTIK_ISSUER"].endswith("/application/o/orcastra-dashboard/"))
         self.assertEqual(kv["AUTHENTIK_API_URL"], "http://10.77.0.12:9000")
         self.assertNotIn("10.0.0.0/8", kv["TRUSTED_PROXY_CIDRS"])

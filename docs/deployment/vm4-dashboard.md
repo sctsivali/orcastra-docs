@@ -10,17 +10,24 @@ Orcastra CMP is the main web application consisting of a Next.js frontend, FastA
 
 Follow the [common Docker installation](index.md#common-docker-installation) steps.
 
-Then configure the Docker storage driver:
+Then configure the Docker storage driver and bound the container logs. Fluent Bit reads the
+json-file logs under `/var/lib/docker/containers`, and without rotation they grow until the disk
+fills:
 
 ```bash
 cat > /etc/docker/daemon.json <<EOF
 {
-  "storage-driver": "vfs"
+  "storage-driver": "vfs",
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "50m", "max-file": "5" }
 }
 EOF
 
 systemctl restart docker
 ```
+
+The log options apply to containers created after the restart. From 1.0.0-RC5
+`docker-compose.prod.yml` sets the same rotation on every service itself.
 
 ---
 
@@ -114,7 +121,7 @@ lose data rather than features.
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-postgres
         restart: always
         ports:
-          - "${POSTGRES_PORT:-5432}:5432"
+          - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
         environment:
           - POSTGRES_USER=${POSTGRES_USER}
           - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -136,7 +143,7 @@ lose data rather than features.
         container_name: ${CONTAINER_PREFIX:-orcastra-dashboard}-redis
         restart: always
         ports:
-          - "${REDIS_PORT:-6381}:6379"
+          - "${REDIS_BIND:-127.0.0.1}:${REDIS_HOST_PORT:-6381}:6379"
         command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
         networks:
           - orcastra-dashboard
@@ -444,19 +451,13 @@ Create `config/fluent-bit/fluent-bit.conf`:
         Emitter_Storage.type   filesystem
         Emitter_Mem_Buf_Limit  10M
 
+    # One rule for application records. A rule on $level and another on $message both matched
+    # every application record (each carries both), so every line was shipped twice.
     [FILTER]
         Name              rewrite_tag
         Match             docker.raw
-        Rule              $level .+ log.app true
+        Rule              $log_type ^(app)$ log.app true
         Emitter_Name      emit_app
-        Emitter_Storage.type   filesystem
-        Emitter_Mem_Buf_Limit  10M
-
-    [FILTER]
-        Name              rewrite_tag
-        Match             docker.raw
-        Rule              $message .+ log.app true
-        Emitter_Name      emit_app_fallback
         Emitter_Storage.type   filesystem
         Emitter_Mem_Buf_Limit  10M
 
@@ -479,7 +480,7 @@ Create `config/fluent-bit/fluent-bit.conf`:
     [FILTER]
         Name              rewrite_tag
         Match             forward.raw
-        Rule              $level .+ log.app true
+        Rule              $log_type ^(app)$ log.app true
         Emitter_Name      emit_fwd_app
         Emitter_Storage.type   filesystem
         Emitter_Mem_Buf_Limit  10M
@@ -676,8 +677,10 @@ CONTAINER_PREFIX=orcastra-dashboard
 POSTGRES_USER=orcastra
 POSTGRES_PASSWORD=<GENERATED_HEX_PASSWORD>
 POSTGRES_DB=orcastra_dashboard
-# Published on loopback only: Docker-published ports bypass the host firewall
-POSTGRES_PORT=127.0.0.1:5432
+# Postgres and Redis are published on 127.0.0.1 only: Docker-published ports bypass the host
+# firewall, and Redis has no password. Leave both unset. From 1.0.0-RC5, POSTGRES_BIND and
+# REDIS_BIND change the address and POSTGRES_HOST_PORT and REDIS_HOST_PORT the port; the older
+# POSTGRES_PORT and REDIS_PORT are ignored.
 DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastra_dashboard
 
 # === Backend (port: 8765) ===
@@ -729,7 +732,6 @@ VAULT_PKI_ROLE=lxd
 
 # === Redis ===
 REDIS_ENABLED=true
-REDIS_PORT=127.0.0.1:6381
 REDIS_URL=redis://redis:6379/0
 
 # === Security ===
