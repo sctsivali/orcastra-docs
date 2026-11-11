@@ -217,6 +217,21 @@ one side than the other. Check the release notes.
 
 ---
 
+## Upgrading to 1.0.0-RC5: Vault token, logs and published ports
+
+Check these before recreating the containers on 1.0.0-RC5.
+
+| Change | What to do |
+|---|---|
+| The backend renews its own Vault token | Nothing, if `VAULT_TOKEN` is a periodic token (`-period=720h`). A token created with `-ttl=0` cannot be renewed past 768 hours: replace it ([Vault guide](../deployment/vm2-vault.md#create-dashboard-token)). The daily renewal job from older guides is harmless to keep. `VAULT_TOKEN_RENEW_ENABLED=false` turns the renewal off. |
+| A refused Vault token is its own state | The Vault notice, Host Health and `/health` (`vault.token.state`) say `token_refused`, and integration API keys answer 503 `api_key_store_unavailable` instead of 401 while it lasts. Alerts keyed on a 401 from the key routes stop firing for this outage. |
+| Operational events | New records in `orcastra-audit-*` (`category: operations`) and in the Cluster Log. See [Operational Events](operational-events.md). |
+| Postgres and Redis are published on loopback | The compose files read `POSTGRES_BIND`/`POSTGRES_HOST_PORT` and `REDIS_BIND`/`REDIS_HOST_PORT`, defaulting to `127.0.0.1`, and no longer read `POSTGRES_PORT` or `REDIS_PORT`. An env file that set those to a bare port published the store on every interface; after the upgrade it is on loopback. Anything outside the host that connected to them directly needs `POSTGRES_BIND` set on purpose. |
+| Container logs rotate | Every service writes json-file logs rotated at five 50 MB files, whatever the host's `daemon.json` says. Recreate the containers for it to apply. |
+| Production refuses two development settings | With `DEBUG=false` the backend refuses to start when `AUTH_ENABLED=false` (every caller would be an Administrator) or when `CORS_ORIGINS` contains `*`. The log line says which. |
+| Template secrets are reported | A `SECRET_KEY`, `NEXTAUTH_SECRET`, `REDIS_ENCRYPTION_KEY` or database password still at the template's `replace_me` value, or a secret shorter than 32 characters, is logged at every start and shown in Host Health (Secrets and Keys) and to Administrators on every page. Nothing refuses to start. A new `SECRET_KEY` invalidates every integration API key. |
+| Client IP forwarding | The env template now sets `FORWARD_CLIENT_IP_HEADERS=false`. Keep `true` only behind a proxy that sets the headers and is listed in `TRUSTED_PROXY_CIDRS`. |
+
 ## Release notes
 
 | Release | Schema | Compose change | Operator-visible behaviour change |
