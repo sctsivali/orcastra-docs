@@ -126,7 +126,7 @@ The `entrypoint.sh` script automatically replaces `NEXT_PUBLIC_*` URLs on every 
 2. Click **Sign in** → should redirect to `https://sso.orcastra.io/...`
 3. After login → should redirect back to `https://app.orcastra.io`
 4. Open browser DevTools → Console → **no CORS errors**
-5. API calls should go to `https://api.orcastra.io/api/v1/...`
+5. API requests go to `https://app.orcastra.io/api/v1/...` (the dashboard forwards them to the backend with the session's token), and the WebSockets (console, terminal, monitoring, task feed) go to `wss://api.orcastra.io`
 6. Open `https://logs.orcastra.io` → should show OpenSearch Dashboards
 
 !!! tip "Closing Raw IP Access"

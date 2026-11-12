@@ -231,6 +231,7 @@ Check these before recreating the containers on 1.0.0-RC5.
 | Production refuses two development settings | With `DEBUG=false` the backend refuses to start when `AUTH_ENABLED=false` (every caller would be an Administrator) or when `CORS_ORIGINS` contains `*`. The log line says which. |
 | Template secrets are reported | A `SECRET_KEY`, `NEXTAUTH_SECRET`, `REDIS_ENCRYPTION_KEY` or database password still at the template's `replace_me` value, or a secret shorter than 32 characters, is logged at every start and shown in Host Health (Secrets and Keys) and to Administrators on every page. Nothing refuses to start. A new `SECRET_KEY` invalidates every integration API key. |
 | Client IP forwarding | The env template now sets `FORWARD_CLIENT_IP_HEADERS=false`. Keep `true` only behind a proxy that sets the headers and is listed in `TRUSTED_PROXY_CIDRS`. |
+| The access token stays on the server | The browser no longer receives the session's access token. Its API calls go to the dashboard hostname under `/api/v1/`, and the dashboard frontend attaches the token from the session cookie. A reverse proxy or tunnel route that sends `/api/v1/` on the dashboard hostname straight to the backend must send it to the frontend instead, or every API call from the browser answers 401. The API hostname, integration API keys, MCP clients and the WebSockets are unchanged. A write whose `Origin` is another site is now refused with 403. |
 
 ## Release notes
 
