@@ -242,6 +242,7 @@ lose data rather than features.
           - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           - NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL=${NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL}
           - FORWARD_CLIENT_IP_HEADERS=${FORWARD_CLIENT_IP_HEADERS:-true}
+          - CSP_SCRIPT_POLICY=${CSP_SCRIPT_POLICY:-enforce}
           - TRUSTED_CLIENT_IP_HEADERS=${TRUSTED_CLIENT_IP_HEADERS:-cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip}
           # Internal Docker URL for server-side API proxying (avoids external DNS/firewall issues)
           - INTERNAL_BACKEND_URL=http://backend:4050
@@ -752,6 +753,9 @@ SECURITY_PROBE_BLOCK_ENABLED=true
 TRUSTED_PROXY_CIDRS=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7,fe80::/10
 ALLOW_PRIVATE_FORWARDED_IPS=false
 FORWARD_CLIENT_IP_HEADERS=true
+# enforce: only scripts with the page's nonce run. report-only while a proxy feature that
+# injects scripts (Cloudflare Rocket Loader, email obfuscation) is still on.
+CSP_SCRIPT_POLICY=enforce
 TRUSTED_CLIENT_IP_HEADERS=cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip
 REDIS_ENCRYPTION_ENABLED=true
 REDIS_ENCRYPTION_KEY=<GENERATED_FERNET_KEY>
