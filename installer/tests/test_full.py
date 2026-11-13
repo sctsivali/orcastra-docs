@@ -464,3 +464,53 @@ class WizardHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _RemoteAnswer:
+    def __init__(self, out, ok=True):
+        self.out, self.ok, self.err, self.rc = out, ok, "", 0 if ok else 1
+
+
+class KeepRunningRelease(unittest.TestCase):
+    """A re-run never takes the CMP back to a release older than the one running.
+
+    The upgrade file moves a Full deployment to a newer release and the database with it; a re-run
+    that redeployed the release stored by the first install would start a backend that cannot read
+    that database. A version this installer does not know is never guessed at either."""
+
+    def _ctx(self, running, wanted, explicit=()):
+        from _fakes import FakeCtx
+        from orcastra_full_install.phases import p02_wizard as W2
+        ctx = FakeCtx(values={"CMP_VERSION": wanted}, artifacts={"instances": {"cmp": {}}})
+        ctx.explicit = set(explicit)
+        image = f"{T.CMP_REGISTRY_REPO}:backend-{running}" if running else ""
+        ctx.remote = lambda role: type("R", (), {"run": lambda self, *a, **k: _RemoteAnswer(image)})()
+        return ctx, W2
+
+    def test_a_stored_older_release_follows_the_running_one(self):
+        ctx, W2 = self._ctx(T.CMP_RELEASES[0], T.CMP_RELEASES[1])
+        W2._keep_running_release(ctx)
+        self.assertEqual(ctx.values["CMP_VERSION"], T.CMP_RELEASES[0])
+
+    def test_an_explicit_older_release_is_refused(self):
+        ctx, W2 = self._ctx(T.CMP_RELEASES[0], T.CMP_RELEASES[1], explicit={"CMP_VERSION"})
+        with self.assertRaises(InstallError):
+            W2._keep_running_release(ctx)
+
+    def test_a_running_release_this_installer_does_not_know_is_refused(self):
+        ctx, W2 = self._ctx("9.9.9", T.CMP_RELEASES[0])
+        with self.assertRaises(InstallError):
+            W2._keep_running_release(ctx)
+
+    def test_an_upgrade_and_a_fresh_host_go_ahead(self):
+        ctx, W2 = self._ctx(T.CMP_RELEASES[1], T.CMP_RELEASES[0])
+        W2._keep_running_release(ctx)
+        self.assertEqual(ctx.values["CMP_VERSION"], T.CMP_RELEASES[0])
+        fresh, _ = self._ctx("", T.CMP_RELEASES[0])
+        fresh.state.artifacts.clear()
+        W2._keep_running_release(fresh)
+        self.assertEqual(fresh.values["CMP_VERSION"], T.CMP_RELEASES[0])
+
+    def test_latest_is_the_stable_release(self):
+        self.assertEqual(T.CMP_LATEST, "1.0.0")
+        self.assertNotIn("-RC", T.CMP_LATEST)

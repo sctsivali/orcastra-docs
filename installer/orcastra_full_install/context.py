@@ -32,6 +32,7 @@ class FullContext:
         self.secrets = SecretStore(self.path("secrets.json"), log)
         self.facts: Dict[str, object] = {}        # discovered at runtime (host, LXD)
         self.answered: set = set(values)            # keys the operator settled (see cli)
+        self.explicit: set = set()                 # keys this run named itself (see cli)
         self._lxd: Optional[Lxd] = None
 
     # -- paths ----------------------------------------------------------------------------

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 
-from orcastra_core.errors import AbortByUser, ConfigError
+from orcastra_core.errors import AbortByUser, ConfigError, InstallError
 
 from .. import cloudflare
 from .. import config as C
@@ -354,6 +354,42 @@ def _version(ctx) -> None:
     ctx.values["CMP_VERSION"] = T.resolve_version(choice)
     if choice == "latest":
         ctx.log.detail(f"latest -> {ctx.values['CMP_VERSION']}")
+    _keep_running_release(ctx)
+
+
+def _keep_running_release(ctx) -> None:
+    """A re-run never takes the CMP back to a release older than the one running.
+
+    The upgrade file moves a deployment and its database to a newer release, while state.json still
+    names the release of the first install; redeploying that one would start a backend that cannot
+    read the database. A stored older release follows the running one, an explicit older one is
+    refused, and a running release this installer does not know is never guessed at."""
+    if not ctx.state.artifact("instances"):
+        return
+    res = ctx.remote("cmp").run(
+        f"docker ps --filter label=com.docker.compose.project={T.COMPOSE_PROJECT} "
+        "--filter label=com.docker.compose.service=backend --format '{{.Image}}' | head -n 1",
+        check=False, timeout=60, what="read the running CMP release")
+    prefix = f"{T.CMP_REGISTRY_REPO}:backend-"
+    image = (res.out or "").strip() if res.ok else ""
+    if not image.startswith(prefix):
+        return
+    running, wanted = image[len(prefix):], ctx.values["CMP_VERSION"]
+    if running == wanted:
+        return
+    if running not in T.CMP_RELEASES:
+        raise InstallError(
+            f"The CMP runs {running}, a release this installer ({T.CMP_LATEST} at newest) does not know.",
+            remediation="Download the newest installer (the one-liner always fetches it) and run it again.")
+    if T.CMP_RELEASES.index(running) > T.CMP_RELEASES.index(wanted):
+        return  # wanted is newer: an upgrade
+    if "CMP_VERSION" in getattr(ctx, "explicit", set()):
+        raise InstallError(
+            f"The CMP runs {running}; {wanted} is older, and the database has already moved on.",
+            remediation="Re-run without CMP_VERSION (or with latest). To go back to an older release, "
+                        "use the rollback the upgrade printed, which restores its database too.")
+    ctx.log.info(f"The CMP runs {running}, newer than the {wanted} recorded by an earlier run; keeping {running}.")
+    ctx.values["CMP_VERSION"] = running
 
 
 def _summary(ctx) -> None:

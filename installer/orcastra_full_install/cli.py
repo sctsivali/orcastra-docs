@@ -63,13 +63,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _values(flags: argparse.Namespace, state: State):
-    """Returns (values, answered): `answered` holds the keys the operator settled (CLI,
-    answer file, environment, or a previous run). The wizard asks for everything else in an
+    """Returns (values, answered, explicit): `answered` holds the keys the operator settled (CLI,
+    answer file, environment, or a previous run), `explicit` those this run named itself. The wizard asks for everything else in an
     interactive run, offering the default, so every option stays a choice."""
     answers = combined_answers(flags.answers)
     cli = {k: getattr(flags, k, None) for k in C.FIELDS}
     values = C.merge(cli, answers)
     answered = {k for k in C.FIELDS if cli.get(k) not in (None, "") or answers.get(k)}
+    explicit = set(answered)
     for k, v in (state.data.get("config") or {}).items():
         if k not in answered:
             values[k] = v  # previous answers win over defaults on a re-run
@@ -79,7 +80,7 @@ def _values(flags: argparse.Namespace, state: State):
     from_file = parse_answer_file(flags.answers) if flags.answers else {}
     if from_file.get("ASSUME_YES", "").lower() in ("1", "true", "yes"):
         flags.assume_yes = True
-    return values, answered
+    return values, answered, explicit
 
 
 def build_context(flags: argparse.Namespace, *, need_install: bool) -> FullContext:
@@ -97,7 +98,7 @@ def build_context(flags: argparse.Namespace, *, need_install: bool) -> FullConte
     if need_install and not state.data.get("config"):
         raise InstallError("Nothing is installed on this host yet.",
                            remediation="Run `orcastra-full install` first.")
-    values, answered = _values(flags, state)
+    values, answered, explicit = _values(flags, state)
     noninteractive = flags.non_interactive or bool(flags.answers) or flags.command == "maintain"
     tty = None if noninteractive else open_tty()
     prompt = Prompter(log, interactive=tty is not None, assume_yes=flags.assume_yes, tty=tty)
@@ -105,6 +106,7 @@ def build_context(flags: argparse.Namespace, *, need_install: bool) -> FullConte
                       state=state, prompt=prompt, interactive=tty is not None, dry_run=dry,
                       values=values)
     ctx.answered = answered
+    ctx.explicit = explicit
     ctx.secrets.load()
     return ctx
 
