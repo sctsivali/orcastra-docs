@@ -28,6 +28,12 @@ def _mask(argv, secret_args):
     return ["***" if a in sset else a for a in argv]
 
 
+def _text(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
 class Proc:
     def __init__(self, log: Log, *, dry_run: bool = False):
         self.log = log
@@ -57,7 +63,8 @@ class Proc:
             return Result(127, "", str(exc), argv)
         except subprocess.TimeoutExpired as exc:
             self.log.debug(f"timeout after {timeout}s: {' '.join(shown)}")
-            return Result(124, exc.stdout or "", (exc.stderr or "") + "\n[timeout]", argv)
+            # note: TimeoutExpired carries bytes even in text mode (the output was never decoded).
+            return Result(124, _text(exc.stdout), _text(exc.stderr) + "\n[timeout]", argv)
         if cp.stdout and not quiet_output:
             # quiet_output: the command prints secret material (a hash, a file of secrets)
             self.log.debug("stdout: " + self.log.redactor.scrub(cp.stdout.strip()[:2000]))

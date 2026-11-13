@@ -162,6 +162,16 @@ class ProcQuiet(unittest.TestCase):
         r = Proc(_Log2()).run(["cat"], timeout=5)
         self.assertEqual(r.rc, 0)  # DEVNULL: cat ends at once instead of waiting on a tty
 
+    def test_a_timeout_is_a_result_not_a_type_error(self):
+        # subprocess hands back bytes on a timeout even in text mode; joined to a str they raised
+        # TypeError, which preflight then reported as "LXD daemon: can't concat str to bytes".
+        from orcastra_core.proc import Proc
+        r = Proc(_Log2()).run(["sh", "-c", "echo started; echo oops >&2; sleep 5"], timeout=1)
+        self.assertEqual(r.rc, 124)
+        self.assertIsInstance(r.out, str)
+        self.assertIsInstance(r.err, str)
+        self.assertIn("[timeout]", r.err)
+
 
 class _Log2:
     redactor = log.Redactor()
