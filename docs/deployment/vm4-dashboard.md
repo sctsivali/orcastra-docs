@@ -26,7 +26,7 @@ EOF
 systemctl restart docker
 ```
 
-The log options apply to containers created after the restart. From 1.0.0-RC5
+The log options apply to containers created after the restart. From 1.0.0
 `docker-compose.prod.yml` sets the same rotation on every service itself.
 
 ---
@@ -57,11 +57,11 @@ variables those images ignore, so use the copy for the exact release you pin in 
 
 Each release's compose file is published in this documentation repository under
 `installer/orcastra_full_install/assets/cmp/<version>/`, unchanged from the release. The
-versions published there are `1.0.0-RC4-hotfix1`, `1.0.0-RC4-hotfix2` and `1.0.0-RC4-hotfix3`.
+versions published there are `1.0.0-RC4-hotfix1`, `1.0.0-RC4-hotfix2`, `1.0.0-RC4-hotfix3` and `1.0.0`.
 Earlier releases are not published there; deploy one of these instead.
 
 ```bash
-VERSION=1.0.0-RC4-hotfix3
+VERSION=1.0.0
 curl -fsSL -o docker-compose.prod.yml \
   "https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/installer/orcastra_full_install/assets/cmp/${VERSION}/docker-compose.prod.yml"
 ```
@@ -241,7 +241,7 @@ lose data rather than features.
         environment:
           - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
           - NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL=${NEXT_PUBLIC_AUTHENTIK_LOGOUT_URL}
-          - FORWARD_CLIENT_IP_HEADERS=${FORWARD_CLIENT_IP_HEADERS:-true}
+          - FORWARD_CLIENT_IP_HEADERS=${FORWARD_CLIENT_IP_HEADERS:-false}
           - CSP_SCRIPT_POLICY=${CSP_SCRIPT_POLICY:-enforce}
           - TRUSTED_CLIENT_IP_HEADERS=${TRUSTED_CLIENT_IP_HEADERS:-cf-connecting-ip,true-client-ip,cf-connecting-ipv6,x-forwarded-for,x-real-ip}
           # Internal Docker URL for server-side API proxying (avoids external DNS/firewall issues)
@@ -679,7 +679,7 @@ POSTGRES_USER=orcastra
 POSTGRES_PASSWORD=<GENERATED_HEX_PASSWORD>
 POSTGRES_DB=orcastra_dashboard
 # Postgres and Redis are published on 127.0.0.1 only: Docker-published ports bypass the host
-# firewall, and Redis has no password. Leave both unset. From 1.0.0-RC5, POSTGRES_BIND and
+# firewall, and Redis has no password. Leave both unset. From 1.0.0, POSTGRES_BIND and
 # REDIS_BIND change the address and POSTGRES_HOST_PORT and REDIS_HOST_PORT the port; the older
 # POSTGRES_PORT and REDIS_PORT are ignored.
 DATABASE_URL=postgresql+asyncpg://orcastra:<SAME_PASSWORD>@postgres:5432/orcastra_dashboard

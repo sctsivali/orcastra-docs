@@ -61,7 +61,7 @@ The wizard asks, offering a default for each:
 9. whether to serve the web endpoints on public HTTPS hostnames through a Cloudflare Tunnel
    (needed to list on OrcaHub, see [Public domain](#public-domain-cloudflare-tunnel)), and if so
    the hostnames and the tunnel token; then whether to connect OrcaHub federation now
-10. the Orcastra CMP release: `latest` (1.0.0-RC4-hotfix3), 1.0.0-RC4-hotfix2 or 1.0.0-RC4-hotfix1. Earlier
+10. the Orcastra CMP release: `latest` (1.0.0), 1.0.0-RC4-hotfix3, 1.0.0-RC4-hotfix2 or 1.0.0-RC4-hotfix1. Earlier
    releases are not offered, because their frontend healthcheck follows the sign-in redirect
    to the public URL and the frontend restarts in a loop. When Docker Hub carries a newer
    release than the installer knows, the wizard says so
@@ -116,7 +116,7 @@ curl -fsSL https://raw.githubusercontent.com/sctsivali/orcastra-docs/main/instal
 | `DOMAIN_CMP`, `DOMAIN_API`, `DOMAIN_SSO`, `DOMAIN_LOGS` | public hostnames, default `app.`, `api.`, `sso.` and `logs.` under `PUBLIC_DOMAIN` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | the tunnel's token (answer file or environment only, never a flag; kept in `secrets.json`) |
 | `ORCAHUB_CLIENT_ID`, `ORCAHUB_DISCOVERY_URL`, `ORCAHUB_CLIENT_SECRET` | the OrcaHub federation client; the secret only from the answer file or environment. `none` as the client ID switches federation off |
-| `CMP_VERSION` | `latest` or a release such as `1.0.0-RC4-hotfix3` |
+| `CMP_VERSION` | `latest` or a release such as `1.0.0`. A re-run never deploys a release older than the one running: one recorded by an earlier run follows the running release, an older one asked for explicitly is refused |
 | `IMAGE` | LXD image for the instances (default `ubuntu:24.04`) |
 | `FIX_HOST_FIREWALL` | `yes`, `no` or `ask`: whether the installer may change host settings, see [Host firewalls](#host-firewalls) |
 

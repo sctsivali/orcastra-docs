@@ -208,8 +208,14 @@ path "secret/data/integrations/*" { capabilities = ["create","read","update","de
 path "secret/metadata/integrations/*" { capabilities = ["list","read","delete"] }
 path "secret/data/my_keys/*"      { capabilities = ["create","read","update","delete","list"] }
 path "secret/metadata/my_keys/*"  { capabilities = ["list","read","delete"] }
+path "auth/token/lookup-self"     { capabilities = ["read"] }
+path "auth/token/renew-self"      { capabilities = ["update"] }
 POLICY
 ```
+
+The last two paths let the dashboard read its own token's lifetime and renew it, which it does
+by itself from 1.0.0. A token created without `-no-default-policy` also gets both from Vault's
+`default` policy; naming them here keeps the policy complete either way.
 
 ### Apply the Policy
 
@@ -232,7 +238,7 @@ vault token create \
     lease of 768h, so it expires after 32 days (`vault token lookup` shows the
     `expire_time`) and cannot be renewed past that. Once it expires every Vault call returns
     `403`: clusters show Error, certificates cannot be issued and integration API keys are
-    refused. Create a periodic token as above. From 1.0.0-RC5 the backend renews it itself,
+    refused. Create a periodic token as above. From 1.0.0 the backend renews it itself,
     see [Renew the Dashboard Token](#renew-the-dashboard-token); each renewal resets the 30-day
     period, and the token keeps the `default` policy that allows it to renew itself.
 
@@ -261,7 +267,7 @@ No value found at secret/metadata/integrations/api_keys
 
 ### Renew the Dashboard Token
 
-From 1.0.0-RC5 the dashboard backend renews a periodic token itself: one worker checks the token
+From 1.0.0 the dashboard backend renews a periodic token itself: one worker checks the token
 every hour (`VAULT_TOKEN_RENEW_CHECK_SECONDS`) and renews it once less than half its period is
 left. A token it cannot renew, or not past its maximum lifetime, is reported a week ahead as the
 [Vault token expiring](../operations/operational-events.md#vault-token-expiring) event, and a

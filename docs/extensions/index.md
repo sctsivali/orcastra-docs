@@ -3,7 +3,7 @@
 Build an add-on against the Orcastra API, install it into an organization, and receive signed events when things change.
 
 !!! note "Availability"
-    Add-ons and the capability model they use are not in a release yet. They are on the development branch after 1.0.0-RC4-hotfix3, so a deployment running that release or an earlier one has neither.
+    Add-ons and the capability model they use arrive in 1.0.0. A deployment running 1.0.0-RC4-hotfix3 or an earlier release has neither.
 
 ---
 

@@ -1,6 +1,6 @@
 # Operational Events
 
-From 1.0.0-RC5 the dashboard reports faults in what it depends on as operational events: one
+From 1.0.0 the dashboard reports faults in what it depends on as operational events: one
 record when a fault starts and one when it clears, each with a plain summary, the fix, and a link
 to the matching section below. They are written where operators already look, so a deployment
 does not depend on anyone else's alerting to learn about them.
