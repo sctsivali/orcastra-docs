@@ -63,10 +63,10 @@ class Rules(unittest.TestCase):
 
 class Editing(unittest.TestCase):
     def test_adding_a_release_makes_it_latest_and_keeps_the_previous_supported(self):
-        data = m.add(copy.deepcopy(published()), "1.0.0-RC5", "2026-11-02")
+        data = m.add(copy.deepcopy(published()), "1.0.1", "2026-12-01")
         self.assertEqual([r["status"] for r in data["releases"][:2]], ["latest", "supported"])
-        self.assertEqual(data["releases"][0]["images"]["backend"], "svlct/orcastra-dashboard:backend-1.0.0-RC5")
-        self.assertTrue(data["releases"][0]["notes_url"].endswith("#1-0-0-rc5"))
+        self.assertEqual(data["releases"][0]["images"]["backend"], "svlct/orcastra-dashboard:backend-1.0.1")
+        self.assertTrue(data["releases"][0]["notes_url"].endswith("#1-0-1"))
 
     def test_a_release_cannot_be_added_twice(self):
         with self.assertRaisesRegex(m.Invalid, "already listed"):

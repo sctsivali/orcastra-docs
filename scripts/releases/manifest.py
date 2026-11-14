@@ -7,7 +7,7 @@ change goes through this tool and its checks, which mirror what the dashboard ac
 (orcastra-cmp backend/app/services/release_check/manifest.py).
 
     python3 scripts/releases/manifest.py validate
-    python3 scripts/releases/manifest.py add 1.0.0-RC5 --released 2026-11-02 [--security]
+    python3 scripts/releases/manifest.py add 1.0.1 --released 2026-12-01 [--security]
     python3 scripts/releases/manifest.py set-status 1.0.0-RC4-hotfix2 end_of_life
     python3 scripts/releases/manifest.py check-images [--write]
 
