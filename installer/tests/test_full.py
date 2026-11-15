@@ -512,5 +512,5 @@ class KeepRunningRelease(unittest.TestCase):
         self.assertEqual(fresh.values["CMP_VERSION"], T.CMP_RELEASES[0])
 
     def test_latest_is_the_stable_release(self):
-        self.assertEqual(T.CMP_LATEST, "1.0.0")
+        self.assertEqual(T.CMP_LATEST, "1.0.1")
         self.assertNotIn("-RC", T.CMP_LATEST)

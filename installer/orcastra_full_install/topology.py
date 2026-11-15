@@ -40,6 +40,7 @@ CLOUDFLARED_DEB_SHA256 = {
 # 1.0.0-RC4-hotfix1 are not offered: their frontend healthcheck follows the sign-in redirect
 # to the public URL, so autoheal restarts the frontend in a loop.
 CMP_COMPOSE_SHA256 = {
+    "1.0.1": "a89880fc46c0cd5c0e8154da84998ac37a6d6385477c1bedeb6e0cc86168d387",
     "1.0.0": "a89880fc46c0cd5c0e8154da84998ac37a6d6385477c1bedeb6e0cc86168d387",
     "1.0.0-RC4-hotfix3": "708e22e40adf832148e6db1ee2483a8cc197ff514257b7aaa493606c96e70f40",
     "1.0.0-RC4-hotfix2": "708e22e40adf832148e6db1ee2483a8cc197ff514257b7aaa493606c96e70f40",
