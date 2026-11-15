@@ -61,12 +61,22 @@ class Rules(unittest.TestCase):
         self.broken(lambda d: d["releases"][0].update(digests={"backend": "sha256:nope"}), "digest")
 
 
+def next_release(data):
+    """A patch release after the listed latest. A fixed version here broke the test at every publish
+    that listed it (1.0.0-RC5, then 1.0.1)."""
+    major, minor, patch = (int(part) for part in m.VERSION.match(data["releases"][0]["version"]).groups()[:3])
+    return "{}.{}.{}".format(major, minor, patch + 1)
+
+
 class Editing(unittest.TestCase):
     def test_adding_a_release_makes_it_latest_and_keeps_the_previous_supported(self):
-        data = m.add(copy.deepcopy(published()), "1.0.1", "2026-12-01")
+        data = copy.deepcopy(published())
+        version = next_release(data)
+        data = m.add(data, version, "2026-12-01")
         self.assertEqual([r["status"] for r in data["releases"][:2]], ["latest", "supported"])
-        self.assertEqual(data["releases"][0]["images"]["backend"], "svlct/orcastra-dashboard:backend-1.0.1")
-        self.assertTrue(data["releases"][0]["notes_url"].endswith("#1-0-1"))
+        self.assertEqual(data["releases"][0]["version"], version)
+        self.assertEqual(data["releases"][0]["images"]["backend"], "svlct/orcastra-dashboard:backend-" + version)
+        self.assertTrue(data["releases"][0]["notes_url"].endswith("#" + m.anchor(version)))
 
     def test_a_release_cannot_be_added_twice(self):
         with self.assertRaisesRegex(m.Invalid, "already listed"):
