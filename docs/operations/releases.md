@@ -21,7 +21,8 @@ on every page, which cannot be dismissed until it runs the security release or a
 
 | Release | Published | State | |
 |---------|-----------|-------|---|
-| [1.0.0](#1-0-0) | 2026-11-14 | Latest |  |
+| [1.0.1](#1-0-1) | 2026-11-15 | Latest |  |
+| [1.0.0](#1-0-0) | 2026-11-14 | Supported |  |
 | [1.0.0-RC4-hotfix3](#1-0-0-rc4-hotfix3) | 2026-10-09 | Supported |  |
 | [1.0.0-RC4-hotfix2](#1-0-0-rc4-hotfix2) | 2026-09-24 | Deprecated | Security release |
 | [1.0.0-RC4-hotfix1](#1-0-0-rc4-hotfix1) | 2026-09-17 | Deprecated |  |
@@ -33,9 +34,18 @@ on every page, which cannot be dismissed until it runs the security release or a
 The digests below are the ones Docker Hub served when each release was published, so pulling by
 digest gets exactly the published image.
 
+### 1.0.1 {#1-0-1}
+
+Published 2026-11-15. State: Latest.
+
+```text
+svlct/orcastra-dashboard:backend-1.0.1@sha256:9e2bd3db8e130ff811323f5193bc1148cb298ee728821d8e1b688d334c91a296
+svlct/orcastra-dashboard:frontend-1.0.1@sha256:c8d4d103d46dd9f74557639c94f748ab2c4f552751a2436acbf460f314ea63e9
+```
+
 ### 1.0.0 {#1-0-0}
 
-Published 2026-11-14. State: Latest.
+Published 2026-11-14. State: Supported.
 
 ```text
 svlct/orcastra-dashboard:backend-1.0.0@sha256:01fd17a2fad823da428497c9f88025d97d7fcc2424dfa8e38b1bbc66f5256ad0

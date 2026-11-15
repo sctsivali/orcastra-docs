@@ -233,6 +233,21 @@ one side than the other. Check the release notes.
 
 ---
 
+## Upgrading to 1.0.1
+
+Check these before recreating the containers on 1.0.1. From 1.0.0-RC4-hotfix1, -hotfix2 or
+-hotfix3, read [Upgrading to 1.0.0](#upgrading-to-100) first: those steps still apply.
+
+| Change | What to do |
+|---|---|
+| Only the backend and the frontend change | The 1.0.1 compose file is the 1.0.0 one. Pin `APP_VERSION=1.0.1` and recreate the backend and the frontend (`docker compose -f docker-compose.prod.yml up -d --no-deps backend frontend`); Postgres, Redis, Fluent Bit and autoheal keep running. The backend applies one schema step, `047_org_cluster_granted_by`, which adds a nullable column. Sessions are kept. |
+| Going back to 1.0.0 needs a downgrade first | 1.0.0 does not start on a database at `047`. Stop the backend and the frontend, then downgrade with the 1.0.1 image: `APP_VERSION=1.0.1 docker compose -f docker-compose.prod.yml run --rm --no-deps -e RUN_MIGRATIONS=false backend alembic downgrade 046_forget_deregistered_records`. It drops only the new column; every row stays. Then pin `APP_VERSION=1.0.0` and recreate both. |
+| Members without a role group are Tenants | An account whose groups map to no role is a Tenant when an active organization lists its email as a member, which is how buyers from OrcaHub sign in through a federated identity provider. The identity provider must send a verified email on every sign-in path; see the [federation trust model](orcahub-federation-sso.md#trust-model). An account with no membership still sees the no-role notice. |
+| Purchases are checked for host reach | Provisioning through a key of the seller's own party reads only what the buyer can reach: the purchased project's instances and the default profile in force there. It refuses host reach (privileged instances, `raw.*` keys, host disks, passthrough and proxy devices, NICs on a host interface) instead of auditing every project on the cluster, which a stock `default` project fails. Purchases refused since 1.0.0 are granted again when OrcaHub retries them, without a step on this side. |
+| Keys may pull from ORCA's appliance stream | `images.orca.id` is accepted as an image server for API keys, next to the public catalogues, `KEY_IMAGE_SERVERS_ALLOW` and the registered clusters. A key a partner created may pull an ORCA build into `default` on a cluster another party holds. |
+| Bind clusters from Synced Organizations | Settings > Integrations > Synced Organizations binds and unbinds an organization's clusters with a preview. A binding an administrator makes records who granted it; bindings made before 1.0.1 keep no grantor. |
+| Object error details carry a message | A 4xx whose `detail` is an object also carries that object's `message` at the top level. Clients that branch on `detail.code` are unaffected. |
+
 ## Upgrading to 1.0.0
 
 Check these before recreating the containers on 1.0.0. They apply when coming from any
