@@ -37,6 +37,8 @@ The entitlement (which projects the tenant may see) is delivered separately by O
 
 Group membership is deliberately not federated. The partner Authentik remains authoritative for local `role_admin`, `role_partner`, and `role_tenant` membership.
 
+A federated tenant therefore normally holds no local role group, and needs none. The dashboard treats an account with no role group as a Tenant while one of your active organizations lists its email as a member, which OrcaHub's provisioning does at purchase. It never grants more than Tenant this way. An account with no role group and no membership sees **No role assigned yet**.
+
 ---
 
 ## What OrcaHub provides
@@ -237,6 +239,8 @@ Use a completely fresh private or incognito session after every provider-scope c
 - **The verified-email gate is the security boundary for logged-out federation.** Linking during source authentication or enrollment is only safe when the upstream sends a literal Boolean `email_verified: true` from an authoritative verification state and the partner policy rejects every other value. Manual linking from an existing authenticated session is a separate control path.
 - **Identity is pinned to `sub` after the first link.** Email establishes the first link; subsequent logins match on the immutable upstream subject, so a later email change cannot silently re-point the account.
 - **Local RBAC remains local.** OrcaHub group membership is not imported. Partner administrators assign local Admin, Partner, or Tenant roles independently of upstream group names.
+- **The provisioned membership is the tenant's role.** A federated tenant without a local role group is a Tenant of the organizations that list its exact email, limited to the projects its policies grant. Removing the tenant from those organizations (**Settings > User Groups**, or OrcaHub's revoke), or deactivating the organization, takes the role away. Removing a role group in Authentik alone does not, while a membership remains; disable the account in Authentik to cut a person off at once.
+- **Every path to an account must verify its email.** The dashboard trusts the email your Authentik puts in the sign-in token, as it does for tenants with a local role group, so an account that can claim a buyer's email can act as that buyer. Keep the verified-email policy on the OrcaHub source, verify email in any local enrollment flow, do not add other sources without the same gate, and do not let users change their own email address. Authentik's own `email_verified` claim is not evidence of this: its default email mapping sends a fixed value.
 
 ---
 
@@ -264,7 +268,8 @@ The invariant across every IdP is that the federated `email` must equal the emai
 | `redirect_uri mismatch` at OrcaHub | Source slug does not match the callback OrcaHub registered | Make the source slug match the `<slug>` in your callback URL |
 | The login button is missing or is a blank icon | The wrong Brand authentication flow was edited, the source is not selected, or source labels are hidden | Find the active flow under **System -> Brands**, edit its Identification stage, select OrcaHub, and enable source labels |
 | Every verified tenant is denied | The verified-aware email mapping is missing, both the managed and custom `email` mappings are selected, or `email_verified` is not a Boolean `true` | Keep only the managed `openid`, no-groups `profile`, and verified-aware `email` mappings on the dedicated provider; verify the claim without logging tokens or the complete userinfo object |
-| Tenant lands but sees no instances | No entitlement for that email, an email mismatch, or no deliberate local role assignment | Confirm the purchase provisioned access, the federated email matches the provisioned email, and the partner assigned the intended local role |
+| **No role assigned yet** after signing in with OrcaHub | The account has no local role group and no active organization on this dashboard lists its email: the purchase is not provisioned yet, it was provisioned for a different email, or the organization is deactivated. CMP 1.0.0 shows this notice to every federated tenant, provisioned or not; the fix is on the development branch and ships with the next release | Confirm the purchase provisioned access for exactly the federated email, letter case included, then choose **Check again** |
+| Tenant lands on **No active access**, or sees no instances | The tenant is a member, but no live policy grants it a project: the entitlement has not arrived, the paid term ended, or access was revoked | Confirm the purchase provisioned access for this email and that its term is current |
 
 ---
 

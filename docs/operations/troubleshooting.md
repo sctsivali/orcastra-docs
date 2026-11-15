@@ -158,6 +158,36 @@ policies, or provision tenant access for it, so the organization stays frozen on
 Next time, rotate the key's secret instead of replacing the key: the key ID, and every
 organization it owns, stay. See [Integration Keys and Organization Ownership](integration-keys.md).
 
+### "Unsafe or Non-Isolated Resources" on a New Purchase
+
+Provisioning for a new buyer answers HTTP 409 with code `cluster_not_safe_to_share` (or 503
+`cluster_share_audit_unavailable`, or 409 `cluster_configuration_operation_active`), and the buyer
+gets no access on the dashboard while the order itself completes at OrcaHub.
+
+Binding a buyer's organization to a cluster runs the shared-cluster audit when the cluster gains a
+holder outside the parties that already hold it. The audit reads the whole cluster and requires
+every project to be restricted and isolated, which a stock LXD `default` project is not.
+
+- CMP 1.0.0 runs this audit on every new buyer, so every new purchase on a stock cluster is refused.
+  The fix is on the development branch and ships with the next release: a buyer organization the
+  provisioning key owns joins that key's party, and a purchase on a cluster that party alone holds
+  is not audited whole. What the buyer reaches is still checked: the purchased project's instances,
+  and the `default` profile they inherit when the project has no profiles of its own, must not be
+  privileged or carry `raw.*` settings, host-path disks, or passthrough or proxy devices. A stock
+  default profile (a root disk from a pool and a managed NIC) passes. If that check fails, the 409
+  names the scope (`profile`, `instance_local`, `instance_effective`); remove the host access from
+  the default profile or the instance.
+- With the fix, the whole-cluster audit still runs when another party also holds the cluster (for
+  example a second seller's organization, or a registration by someone outside the key's party),
+  when the key's creator is unknown, and for an add-on credential. Either remediate what the audit
+  names, or bind the cluster to one party only.
+- Buyer projects that leave `features.networks` off share the `default` project's network with
+  each other, as they did before 1.0.0. Isolate them at the network level (separate networks, or
+  LXD NIC filtering) if buyers must not reach each other.
+
+Existing buyers are not affected: a buyer organization already bound to the cluster is never
+audited again.
+
 ---
 
 ## Database Issues
