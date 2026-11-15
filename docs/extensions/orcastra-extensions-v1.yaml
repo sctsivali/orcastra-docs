@@ -47,6 +47,11 @@ components:
             $ref: '#/components/schemas/ClusterPermission'
           title: Cluster Permissions
           type: array
+        effective_cluster_permissions:
+          items:
+            $ref: '#/components/schemas/ClusterPermission'
+          title: Effective Cluster Permissions
+          type: array
         error:
           anyOf:
           - type: string
@@ -86,25 +91,7 @@ components:
       type: object
     ClusterPermission:
       additionalProperties: true
-      description: 'Permission for a specific cluster, as it is STORED and as it is read back.
-
-
-        important: deliberately lenient, with no validators at all. Every stored grant is read back
-
-        straight into this model (`_key_info` does `APIKeyInfo(**metadata)` on raw Vault JSON, and
-
-        `/whoami` and `/validate` construct it from stored dicts), so a validator here does not guard
-
-        a boundary, it re-judges history. One legacy key with a shape a newer rule dislikes would
-
-        raise inside the list comprehension in `list_api_keys` and 500 the whole key list, hiding
-
-        every other key. `APIKeyInfo.app_type` above carries the same note for the same reason.
-
-
-        New grants are checked by `ClusterPermissionRequest` below, which is what every request model
-
-        uses. Tighten that one, never this one.'
+      description: Access a key holds on one cluster, as stored and as returned.
       properties:
         cluster_id:
           description: Cluster ID to grant access to
@@ -216,6 +203,22 @@ components:
     ProvisionTenantAccessRequest:
       description: Request from OrcaHub to auto-create tenant access for a provisioned project.
       properties:
+        access_ends_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When the retention window ends. From then on the access grants nothing, even if
+            no revoke follows. Must not be before term_ended_at. Absent keeps; null clears.
+          title: Access Ends At
+        as_of:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When the sender decided these dates. A request older than the last one recorded
+            is refused with 409 stale_provision, so a delayed retry cannot undo a later decision.
+          title: As Of
         cluster_id:
           description: Cluster ID where the project was created
           title: Cluster Id
@@ -255,8 +258,19 @@ components:
           type: array
         project_name:
           description: LXD project name
+          maxLength: 63
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$
           title: Project Name
           type: string
+        term_ended_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: 'When the buyer''s paid term ended or ends. From then on the access is view only:
+            no start, stop, console or snapshot. Absent keeps the stored value; null clears it.'
+          title: Term Ended At
         user_emails:
           description: Tenant user emails to grant access
           items:
@@ -272,6 +286,12 @@ components:
     ProvisionTenantAccessResponse:
       description: Response for provisioned tenant access.
       properties:
+        access_ends_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Access Ends At
         assignments_created:
           title: Assignments Created
           type: integer
@@ -293,6 +313,10 @@ components:
         organization_id:
           title: Organization Id
           type: integer
+        phase:
+          default: active
+          title: Phase
+          type: string
         policy_id:
           title: Policy Id
           type: integer
@@ -302,6 +326,12 @@ components:
         rules_created:
           title: Rules Created
           type: integer
+        term_ended_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          title: Term Ended At
       required:
       - policy_id
       - policy_name
@@ -448,14 +478,26 @@ components:
           anyOf:
           - type: string
           - type: 'null'
-          description: Error message if request failed
+          description: Error message if the cluster could not be reached
           title: Error
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: not_found, conflict, forbidden, invalid_request, ... when LXD refused
+          title: Error Code
         headers:
           additionalProperties:
             type: string
           description: Response headers
           title: Headers
           type: object
+        lxd_error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: LXD's own error message when LXD refused the request
+          title: Lxd Error
         status_code:
           description: HTTP status code from LXD
           title: Status Code
@@ -479,6 +521,14 @@ components:
           description: LXD project name
           title: Project Name
           type: string
+        reason:
+          anyOf:
+          - maxLength: 64
+            pattern: ^[a-z0-9_.-]+$
+            type: string
+          - type: 'null'
+          description: Why the access ends, recorded in the audit trail, for example term_ended or cancelled
+          title: Reason
         user_emails:
           description: If given, revoke only these users' assignments; otherwise revoke the whole project
             policy
@@ -523,20 +573,14 @@ components:
       description: 'Which build of this server answered.
 
 
-        Carried only on responses a credential has already unlocked. The version alone is public, on
+        Returned only after a credential is verified. The version alone is public on `/health` and
 
-        `/health` and `/`; the commit and the build date are not, because f270eb0 took them off the
-
-        unauthenticated surface and that decision stands. An integrator holding a key is a different
-
-        caller from an anonymous one, and this is the call it already makes to prove it is connected.
+        `/`; the commit and the build date are not.
 
 
-        important: self-reported. It says which build this deployment believes it is running, which is
+        Self-reported: it names the build this deployment believes it runs. It is not evidence that
 
-        what an operator needs to answer "which version is this partner on" without asking them. It is
-
-        not evidence the deployment is genuine, and nothing should be built on it as if it were.'
+        the deployment is genuine.'
       properties:
         built_at:
           anyOf:
@@ -720,6 +764,20 @@ components:
     SyncPolicy:
       description: Policy to sync from OrcaHub.
       properties:
+        access_ends_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When the retention window ends
+          title: Access Ends At
+        as_of:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When the sender decided these dates
+          title: As Of
         assignments:
           default: []
           items:
@@ -750,6 +808,13 @@ components:
             $ref: '#/components/schemas/SyncPolicyRule'
           title: Rules
           type: array
+        term_ended_at:
+          anyOf:
+          - format: date-time
+            type: string
+          - type: 'null'
+          description: When the paid term ended or ends
+          title: Term Ended At
       required:
       - external_id
       - name
