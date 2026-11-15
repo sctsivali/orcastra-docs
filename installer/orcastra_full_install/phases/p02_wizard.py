@@ -357,6 +357,46 @@ def _version(ctx) -> None:
     _keep_running_release(ctx)
 
 
+def _running_release(ctx) -> str:
+    """The release the CMP backend runs, or "" when no backend of this deployment answers."""
+    res = ctx.remote("cmp").run(
+        f"docker ps --filter label=com.docker.compose.project={T.COMPOSE_PROJECT} "
+        "--filter label=com.docker.compose.service=backend --format '{{.Image}}' | head -n 1",
+        check=False, timeout=60, what="read the running CMP release")
+    prefix = f"{T.CMP_REGISTRY_REPO}:backend-"
+    image = (res.out or "").strip() if res.ok else ""
+    return image[len(prefix):] if image.startswith(prefix) else ""
+
+
+def _frozen_changes(ctx, previous) -> list:
+    """FROZEN keys this run would change on a built deployment.
+
+    important: CMP_VERSION is compared with the release that runs, not only with state.json. The
+    upgrade file moves a Full deployment to a newer release while state.json keeps the first
+    install's, so `latest` from the answer file names what already runs after that upgrade. A
+    running release this installer does not know is left to _keep_running_release, which stops
+    the run with the right fix."""
+    changed = C.frozen_changes(previous, ctx.values)
+    if "CMP_VERSION" in changed:
+        running = _running_release(ctx)
+        if running and (running == ctx.values["CMP_VERSION"] or running not in T.CMP_RELEASES):
+            changed.remove("CMP_VERSION")
+    return changed
+
+
+def _frozen_remediation(changed) -> str:
+    """What to do about a refused change. A CMP release never moves by an uninstall: that deletes
+    the database the upgrade guide would carry over."""
+    steps = []
+    if any(k != "CMP_VERSION" for k in changed):
+        steps.append("Run `orcastra-full uninstall` first to rebuild with new values.")
+    if "CMP_VERSION" in changed:
+        steps.append("This installer does not upgrade the CMP of an existing deployment: leave "
+                     "CMP_VERSION out to keep the release that runs, or upgrade the CMP with "
+                     "docs/operations/upgrading.md inside orca-cmp.")
+    return " ".join(steps)
+
+
 def _keep_running_release(ctx) -> None:
     """A re-run never takes the CMP back to a release older than the one running.
 
@@ -366,15 +406,9 @@ def _keep_running_release(ctx) -> None:
     refused, and a running release this installer does not know is never guessed at."""
     if not ctx.state.artifact("instances"):
         return
-    res = ctx.remote("cmp").run(
-        f"docker ps --filter label=com.docker.compose.project={T.COMPOSE_PROJECT} "
-        "--filter label=com.docker.compose.service=backend --format '{{.Image}}' | head -n 1",
-        check=False, timeout=60, what="read the running CMP release")
-    prefix = f"{T.CMP_REGISTRY_REPO}:backend-"
-    image = (res.out or "").strip() if res.ok else ""
-    if not image.startswith(prefix):
+    running, wanted = _running_release(ctx), ctx.values["CMP_VERSION"]
+    if not running:
         return
-    running, wanted = image[len(prefix):], ctx.values["CMP_VERSION"]
     if running == wanted:
         return
     if running not in T.CMP_RELEASES:
@@ -444,7 +478,7 @@ def run(ctx) -> None:
         # still differs was asked for explicitly ("latest" is compared as what it means)
         if "CMP_VERSION" in ctx.values:
             ctx.values["CMP_VERSION"] = T.resolve_version(ctx.values["CMP_VERSION"])
-        changed = C.frozen_changes(previous, ctx.values)
+        changed = _frozen_changes(ctx, previous)
         try:
             resized = C.sizes_from(previous) != C.sizes_from(ctx.values)
         except ConfigError:
@@ -460,7 +494,7 @@ def run(ctx) -> None:
             raise ConfigError(
                 "These settings cannot change once instances exist: " + ", ".join(
                     f"{k} ({previous[k]} -> {ctx.values[k]})" for k in changed),
-                remediation="Run `orcastra-full uninstall` first to rebuild with new values.")
+                remediation=_frozen_remediation(changed))
 
     _instance_type(ctx)
     _pool(ctx)

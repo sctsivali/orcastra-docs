@@ -511,6 +511,36 @@ class KeepRunningRelease(unittest.TestCase):
         W2._keep_running_release(fresh)
         self.assertEqual(fresh.values["CMP_VERSION"], T.CMP_RELEASES[0])
 
+    def test_latest_after_the_upgrade_file_is_no_change(self):
+        # state.json keeps the first install's release; the upgrade file moved the CMP on, and
+        # `CMP_VERSION=latest` from the documented answer file now names what already runs
+        ctx, W2 = self._ctx(T.CMP_RELEASES[0], T.CMP_RELEASES[0], explicit={"CMP_VERSION"})
+        self.assertEqual(W2._frozen_changes(ctx, {"CMP_VERSION": T.CMP_RELEASES[1]}), [])
+
+    def test_a_running_release_this_installer_does_not_know_is_left_to_the_release_guard(self):
+        ctx, W2 = self._ctx("9.9.9", T.CMP_RELEASES[0], explicit={"CMP_VERSION"})
+        self.assertEqual(W2._frozen_changes(ctx, {"CMP_VERSION": T.CMP_RELEASES[1]}), [])
+        with self.assertRaises(InstallError):
+            W2._keep_running_release(ctx)
+
+    def test_a_release_other_than_the_running_one_is_still_a_change(self):
+        ctx, W2 = self._ctx(T.CMP_RELEASES[1], T.CMP_RELEASES[0], explicit={"CMP_VERSION"})
+        self.assertEqual(W2._frozen_changes(ctx, {"CMP_VERSION": T.CMP_RELEASES[1]}), ["CMP_VERSION"])
+
+    def test_without_a_running_backend_the_record_decides(self):
+        ctx, W2 = self._ctx("", T.CMP_RELEASES[0], explicit={"CMP_VERSION"})
+        self.assertEqual(W2._frozen_changes(ctx, {"CMP_VERSION": T.CMP_RELEASES[1]}), ["CMP_VERSION"])
+
+    def test_a_cmp_version_change_points_at_the_upgrade_guide_never_at_uninstall(self):
+        from orcastra_full_install.phases import p02_wizard as W2
+        only = W2._frozen_remediation(["CMP_VERSION"])
+        self.assertNotIn("uninstall", only)
+        self.assertIn("upgrading.md", only)
+        mixed = W2._frozen_remediation(["IP_CMP", "CMP_VERSION"])
+        self.assertIn("uninstall", mixed)
+        self.assertIn("upgrading.md", mixed)
+        self.assertIn("uninstall", W2._frozen_remediation(["IP_CMP"]))
+
     def test_latest_is_the_stable_release(self):
         self.assertEqual(T.CMP_LATEST, "1.0.1")
         self.assertNotIn("-RC", T.CMP_LATEST)
