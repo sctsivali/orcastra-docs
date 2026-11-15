@@ -1303,14 +1303,20 @@ The import runs as `admin`, whose preferred tenant is **Global** (Step 7), so ev
 the dashboards. Objects saved in a user's Private tenant are visible only to that user.
 
 !!! tip "Password Variable Issue"
-    If you see `[ERROR] Admin password is required`, use the literal password instead:
+    `[ERROR] Admin password is required` means `$OPENSEARCH_PASS` is empty in this shell, for
+    example because it was set in another session. Enter the password again without echoing it or
+    writing it to shell history, and let the script read it from `OPENSEARCH_ADMIN_PASSWORD`:
 
     ```bash
+    read -rsp "OpenSearch admin password: " OPENSEARCH_ADMIN_PASSWORD; echo
+    export OPENSEARCH_ADMIN_PASSWORD
     ./setup_opensearch_dashboards.sh \
       --url http://localhost:5601 \
-      --password "your-actual-password" \
       --dashboard-dir config/opensearch-dashboards
+    unset OPENSEARCH_ADMIN_PASSWORD
     ```
+
+    Avoid typing the password itself on the command line: it stays in shell history.
 
 ---
 
