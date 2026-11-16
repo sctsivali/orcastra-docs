@@ -1,11 +1,27 @@
 {
   "schema_version": 1,
   "product": "orcastra-cmp",
-  "generated_at": "2026-11-15T23:13:05Z",
+  "generated_at": "2026-11-16T23:24:29Z",
   "releases": [
     {
-      "version": "1.0.1",
+      "version": "1.0.2",
       "status": "latest",
+      "released": "2026-11-16",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-2",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/operations/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard:backend-1.0.2",
+        "frontend": "svlct/orcastra-dashboard:frontend-1.0.2"
+      },
+      "digests": {
+        "backend": "sha256:458f15fa3336bbecb3c9a0d3b022f816ab0465f9dd02842029fbef0d6779109e",
+        "frontend": "sha256:ec1ebef75fd6fc4eb318600bb9daf12e62384844a7c03560d09534e48763a36a"
+      }
+    },
+    {
+      "version": "1.0.1",
+      "status": "supported",
       "released": "2026-11-15",
       "security": false,
       "notes_url": "https://docs.orcastra.io/en/latest/operations/releases/#1-0-1",

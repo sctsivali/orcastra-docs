@@ -233,6 +233,21 @@ one side than the other. Check the release notes.
 
 ---
 
+## Upgrading to 1.0.2
+
+Check these before recreating the containers on 1.0.2. From 1.0.0, read [Upgrading to 1.0.1](#upgrading-to-101)
+first; from 1.0.0-RC4-hotfix1, -hotfix2 or -hotfix3, also [Upgrading to 1.0.0](#upgrading-to-100): those steps
+still apply.
+
+| Change | What to do |
+|---|---|
+| Only the backend and the frontend change | The 1.0.2 compose file is the 1.0.1 one and the schema stays at `047_org_cluster_granted_by`. Pin `APP_VERSION=1.0.2` and recreate the backend and the frontend (`docker compose -f docker-compose.prod.yml up -d --no-deps backend frontend`); Postgres, Redis, Fluent Bit and autoheal keep running. Sessions are kept. |
+| Wait for running rebuilds | Recreating the backend cuts off a rebuild in progress. Check Operations first and wait until no rebuild runs. |
+| Tenant rebuild is new and off until granted | A Tenant rebuilds an instance only when its tenant rule names the new `rebuild` permission next to View and Operate. Operate never implies it and OrcaHub never sends it; add it by hand in Settings > Access Policies. Two optional settings in `.env` limit it: `TENANT_REBUILD_PER_INSTANCE_PER_HOUR` (default 3) and `TENANT_REBUILD_CONCURRENT_PER_ORG` (default 2), each a number from 0 to 100; 0 turns tenant rebuild off. The backend refuses to start with a value outside that range. Partners and Administrators keep rebuilding as before, with one rebuild in flight per instance. |
+| Stored rules naming `rebuild` | Before 1.0.1 the OrcaHub policy sync stored permissions without checking them. Before upgrading, look for tenant rules that already name `rebuild` (`SELECT r.id, p.organization_id FROM tenant_policy_rules r JOIN tenant_access_policies p ON p.id = r.policy_id WHERE r.permissions::text LIKE '%"rebuild"%'`); 1.0.2 reads them as a live grant. None is expected. |
+| Sizes read in binary | An account that never chose its byte units now reads GiB, MiB and KiB. A saved choice stays. API callers without the `X-Byte-Units` header still read decimal. |
+| Going back to 1.0.1 | No schema step: pin `APP_VERSION=1.0.1` and recreate both. 1.0.1 lists a tenant rule that names `rebuild` but answers 422 when it is saved; take `rebuild` out of such rules before you go back if you will edit them. |
+
 ## Upgrading to 1.0.1
 
 Check these before recreating the containers on 1.0.1. From 1.0.0-RC4-hotfix1, -hotfix2 or

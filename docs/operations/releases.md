@@ -34,9 +34,18 @@ on every page, which cannot be dismissed until it runs the security release or a
 The digests below are the ones Docker Hub served when each release was published, so pulling by
 digest gets exactly the published image.
 
+### 1.0.2 {#1-0-2}
+
+Published 2026-11-16. State: Latest.
+
+```text
+svlct/orcastra-dashboard:backend-1.0.2@sha256:458f15fa3336bbecb3c9a0d3b022f816ab0465f9dd02842029fbef0d6779109e
+svlct/orcastra-dashboard:frontend-1.0.2@sha256:ec1ebef75fd6fc4eb318600bb9daf12e62384844a7c03560d09534e48763a36a
+```
+
 ### 1.0.1 {#1-0-1}
 
-Published 2026-11-15. State: Latest.
+Published 2026-11-15. State: Supported.
 
 ```text
 svlct/orcastra-dashboard:backend-1.0.1@sha256:9e2bd3db8e130ff811323f5193bc1148cb298ee728821d8e1b688d334c91a296
