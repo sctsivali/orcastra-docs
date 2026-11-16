@@ -542,5 +542,5 @@ class KeepRunningRelease(unittest.TestCase):
         self.assertIn("uninstall", W2._frozen_remediation(["IP_CMP"]))
 
     def test_latest_is_the_stable_release(self):
-        self.assertEqual(T.CMP_LATEST, "1.0.1")
+        self.assertEqual(T.CMP_LATEST, "1.0.2")
         self.assertNotIn("-RC", T.CMP_LATEST)
