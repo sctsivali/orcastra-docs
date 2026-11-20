@@ -34,11 +34,13 @@ def run(ctx):
         "postgres_user": f.postgres_user,
         "postgres_db": f.postgres_db,
         "tunnel": bool(f.tunnel),
+        "https_bind": f.https_bind,
+        "uploads_dir": f.uploads_dir,
         **ttls,
     })
     ctx.state.set_config({k: ctx.cfg[k] for k in (
         "host", "host_is_ip", "san_type", "https_port", "base_url", "container_prefix",
-        "image_tag", "postgres_user", "postgres_db", "tunnel",
+        "image_tag", "postgres_user", "postgres_db", "tunnel", "https_bind", "uploads_dir",
         "client_cert_ttl_days", "jwt_ttl_seconds", "ca_ttl_hours", "role_max_ttl_hours")})
 
     ctx.log.ok(f"Dashboard URL: {base_url}  (cert SAN: {san_type}:{host})")

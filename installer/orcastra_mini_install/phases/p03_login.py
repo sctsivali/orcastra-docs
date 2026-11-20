@@ -9,7 +9,7 @@ _AUTH_SIGNS = ("401 unauthorized", "pull access denied", "requested access to th
 
 
 def image_refs(ctx):
-    tag = ctx.cfg.get("image_tag", "1.0.0-RC1")
+    tag = ctx.cfg.get("image_tag", "1.0.0")
     backend = ctx.flags.image_backend or f"svlct/orcastra-dashboard-mini:backend-{tag}"
     frontend = ctx.flags.image_frontend or f"svlct/orcastra-dashboard-mini:frontend-{tag}"
     return backend, frontend
@@ -28,6 +28,14 @@ def run(ctx):
         ctx.log.detail("[dry-run] skipping registry access probe.")
         return
     backend, frontend = image_refs(ctx)
+    if ctx.flags.no_pull:
+        missing = [ref for ref in (backend, frontend)
+                   if not ctx.proc.run(["docker", "image", "inspect", ref]).ok]
+        if missing:
+            raise DockerError(f"--no-pull was given but {', '.join(missing)} is not on this host.",
+                              remediation="Load the images first (docker load -i <file>), or run without --no-pull.")
+        ctx.log.ok("Images present on this host (--no-pull).")
+        return
     ctx.log.info(f"Checking access to {backend} ...")
     ok, err = _access_ok(ctx, backend)
     if ok:

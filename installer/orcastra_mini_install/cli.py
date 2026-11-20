@@ -20,9 +20,9 @@ VALUE_DEFAULTS = {
     "install_dir": DEFAULT_INSTALL_DIR,
     "https_port": 6969,
     "container_prefix": "orcastra-mini",
-    "version_tag": "1.0.0-RC1",
+    "version_tag": "1.0.0",
     "client_cert_ttl_days": 365,
-    "jwt_ttl_seconds": 3600,
+    "jwt_ttl_seconds": 900,
     "ca_ttl_hours": 87600,
     "role_max_ttl_hours": 8760,
     "postgres_user": "orcastra",
@@ -30,6 +30,8 @@ VALUE_DEFAULTS = {
     "unseal_shares": 5,
     "unseal_threshold": 3,
     "admin_cn": "admin",
+    "https_bind": "0.0.0.0",
+    "uploads_dir": "/var/orcastra/uploads",
 }
 INT_FLAGS = {"https_port", "client_cert_ttl_days", "jwt_ttl_seconds", "ca_ttl_hours",
              "role_max_ttl_hours", "unseal_shares", "unseal_threshold"}
@@ -51,7 +53,7 @@ def build_parser():
     g.add_argument("--quiet", action="store_true")
     g.add_argument("--dry-run", action="store_true",
                    help="render files + print the plan; run nothing mutating")
-    g.add_argument("--version-tag", default=None, help="image tag (e.g. 1.0.0-RC1)")
+    g.add_argument("--version-tag", default=None, help="image tag (e.g. 1.0.0)")
 
     n = p.add_argument_group("host / network")
     n.add_argument("--host", default=None, help="DNS name or IP to reach the dashboard")
@@ -59,6 +61,9 @@ def build_parser():
     hostkind.add_argument("--host-is-ip", dest="host_is_ip", action="store_true", default=None)
     hostkind.add_argument("--host-is-dns", dest="host_is_ip", action="store_false", default=None)
     n.add_argument("--https-port", type=int, default=None)
+    n.add_argument("--https-bind", default=None,
+                   help="the address nginx listens on (default 0.0.0.0, every interface)")
+    n.add_argument("--uploads-dir", default=None, help="host directory for image and ISO uploads")
     n.add_argument("--container-prefix", default=None)
     n.add_argument("--tunnel", action="store_true", help="reach the host over an SSH tunnel (HOST=localhost)")
 
@@ -74,6 +79,8 @@ def build_parser():
     r.add_argument("--skip-docker-install", action="store_true")
     r.add_argument("--image-backend", default=None)
     r.add_argument("--image-frontend", default=None)
+    r.add_argument("--no-pull", action="store_true",
+                   help="use images already on this host (docker load, air-gapped) instead of pulling")
 
     v = p.add_argument_group("vault")
     v.add_argument("--convenience", action="store_true",
@@ -89,6 +96,7 @@ def build_parser():
                    help="server-side turnkey admin bootstrap (key born on server, shredded)")
     b.add_argument("--skip-admin-bootstrap", action="store_true")
     b.add_argument("--admin-cn", default=None)
+    b.add_argument("--admin-email", default=None, help="the first Administrator's email (default <admin-cn>@users.orcastra.internal)")
     b.add_argument("--bootstrap-via-curl", action="store_true")
 
     l = p.add_argument_group("lifecycle / phase control")
@@ -100,6 +108,14 @@ def build_parser():
     l.add_argument("--force", action="append", metavar="PHASE", default=[],
                    help="re-run PHASE even if done (repeatable)")
     l.add_argument("--rotate-secret", action="append", metavar="NAME", default=[])
+    l.add_argument("--upgrade", action="store_true",
+                   help="upgrade an installed Mini to --version-tag (default: this installer's release), "
+                        "with a backup and automatic rollback on failure")
+    l.add_argument("--rollback", nargs="?", const="latest", default=None, metavar="BACKUP",
+                   help="restore a backup an upgrade took (default: the newest) and start that release")
+    l.add_argument("--backup", action="store_true", help="dump the database and save the deployment files")
+    l.add_argument("--email-map", default=None, metavar="FILE",
+                   help="upgrade: JSON of certificate fingerprint -> email for existing operators")
     l.add_argument("--uninstall", action="store_true")
     l.add_argument("--purge-volumes", action="store_true")
     l.add_argument("--keep-certs", action="store_true")
@@ -189,6 +205,13 @@ def main(argv=None) -> int:
             from .phases import uninstall as un
             un.run(ctx)
             return 0
+        if flags.upgrade or flags.rollback or flags.backup:
+            from . import upgrade
+            if flags.upgrade:
+                return upgrade.run_upgrade(ctx)
+            if flags.rollback:
+                return upgrade.run_rollback(ctx, flags.rollback)
+            return upgrade.run_backup(ctx)
         return _run_phases(ctx)
     except AbortByUser as exc:
         log.error(str(exc))

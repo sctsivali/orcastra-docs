@@ -69,7 +69,9 @@ def main() -> int:
         print(f"ERROR: missing heredocs in quick-start.md: {sorted(missing)}", file=sys.stderr)
         return 1
     comp = blocks["docker-compose.yml"]
-    for ref in ("svlct/orcastra-dashboard-mini:backend-", "svlct/orcastra-dashboard-mini:frontend-"):
+    # templates.render_compose swaps these two lines for a run that brings its own images.
+    for ref in ("svlct/orcastra-dashboard-mini}:backend-${APP_VERSION:-",
+                "svlct/orcastra-dashboard-mini}:frontend-${APP_VERSION:-"):
         if ref not in comp:
             print(f"ERROR: image ref {ref!r} not found in compose heredoc", file=sys.stderr)
             return 1

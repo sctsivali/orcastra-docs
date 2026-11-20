@@ -7,11 +7,12 @@ values; it never changes structure, ordering, or comments.
 """
 from . import _blocks
 
-DEFAULT_IMAGE_TAG = "1.0.0-RC1"
+DEFAULT_IMAGE_TAG = "1.0.0"
 
-# Image refs as they appear verbatim in the quick-start compose heredoc.
-_BACKEND_REF = "svlct/orcastra-dashboard-mini:backend-" + DEFAULT_IMAGE_TAG
-_FRONTEND_REF = "svlct/orcastra-dashboard-mini:frontend-" + DEFAULT_IMAGE_TAG
+# The compose names its images by repository and APP_VERSION from .env; a run that brings its own
+# images (--image-backend/--image-frontend) replaces these two lines.
+_BACKEND_IMAGE_LINE = "    image: ${MINI_IMAGE_REPO:-svlct/orcastra-dashboard-mini}:backend-${APP_VERSION:-1.0.0}"
+_FRONTEND_IMAGE_LINE = "    image: ${MINI_IMAGE_REPO:-svlct/orcastra-dashboard-mini}:frontend-${APP_VERSION:-1.0.0}"
 
 # Keys whose value the installer fills in .env. Every other line (comments, fixed
 # defaults like AUTH_MODE) is kept exactly as the docs publish it.
@@ -19,6 +20,8 @@ FILLABLE_ENV_KEYS = (
     "CONTAINER_PREFIX",
     "APP_VERSION",
     "HTTPS_PORT",
+    "HTTPS_BIND",
+    "UPLOADS_DIR",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_DB",
@@ -37,12 +40,23 @@ FILLABLE_ENV_KEYS = (
 )
 
 
-def render_compose(image_tag: str = DEFAULT_IMAGE_TAG) -> str:
-    """The pull-based compose, with the backend/frontend image tag substituted."""
+def render_compose(image_tag: str = DEFAULT_IMAGE_TAG, backend_image: str = None,
+                   frontend_image: str = None) -> str:
+    """The pull-based compose. The image tag comes from APP_VERSION in .env; image_tag only moves
+    the default, and explicit images replace the two image lines."""
     out = _blocks.COMPOSE
-    out = out.replace(_BACKEND_REF, "svlct/orcastra-dashboard-mini:backend-" + image_tag)
-    out = out.replace(_FRONTEND_REF, "svlct/orcastra-dashboard-mini:frontend-" + image_tag)
+    if _BACKEND_IMAGE_LINE not in out or _FRONTEND_IMAGE_LINE not in out:
+        raise KeyError("the compose block no longer names its images as expected (docs drift?)")
+    out = out.replace(_BACKEND_IMAGE_LINE, f"    image: {backend_image}" if backend_image
+                      else _BACKEND_IMAGE_LINE.replace(":-1.0.0}", f":-{image_tag}}}"))
+    out = out.replace(_FRONTEND_IMAGE_LINE, f"    image: {frontend_image}" if frontend_image
+                      else _FRONTEND_IMAGE_LINE.replace(":-1.0.0}", f":-{image_tag}}}"))
     return out
+
+
+def env_skeleton() -> str:
+    """The published .env block, placeholders included."""
+    return _blocks.ENV_DOC
 
 
 def nginx_conf() -> str:

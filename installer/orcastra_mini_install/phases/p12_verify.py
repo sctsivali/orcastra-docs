@@ -41,7 +41,7 @@ def run(ctx):
         if not ok:
             problems.append(f"{svc} ({state}/{health})")
 
-    url = f"https://127.0.0.1:{ctx.https_port}/"
+    url = f"https://{ctx.edge_host}:{ctx.https_port}/"
     code = http_probe(url, timeout=8)
     if code and code < 500:
         ctx.log.detail(f"  ✓ HTTPS edge answered {code} at {url}")

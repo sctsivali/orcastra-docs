@@ -24,11 +24,17 @@ class TemplateParity(unittest.TestCase):
 
     def test_compose_tag_substitution(self):
         c = T.render_compose("2.0.0")
-        self.assertIn("svlct/orcastra-dashboard-mini:backend-2.0.0", c)
-        self.assertIn("svlct/orcastra-dashboard-mini:frontend-2.0.0", c)
-        self.assertNotIn("backend-1.0.0-RC1", c)
-        # only the image tag changed; the APP_VERSION fallback default stays
-        self.assertIn("${APP_VERSION:-1.0.0-RC1}", c)
+        # The tag follows APP_VERSION in .env; the argument only moves the image default.
+        self.assertIn("svlct/orcastra-dashboard-mini}:backend-${APP_VERSION:-2.0.0}", c)
+        self.assertIn("svlct/orcastra-dashboard-mini}:frontend-${APP_VERSION:-2.0.0}", c)
+        # the APP_VERSION environment default handed to the backend is not an image line
+        self.assertIn("- APP_VERSION=${APP_VERSION:-1.0.0}", c)
+
+    def test_explicit_images_replace_the_image_lines(self):
+        c = T.render_compose("1.0.0", "registry.example/mini:be-x", "registry.example/mini:fe-x")
+        self.assertIn("    image: registry.example/mini:be-x", c)
+        self.assertIn("    image: registry.example/mini:fe-x", c)
+        self.assertNotIn("orcastra-dashboard-mini}:backend-", c)
 
     def test_nginx_and_vault_verbatim(self):
         self.assertEqual(T.nginx_conf(), _blocks.NGINX_CONF)
@@ -44,13 +50,13 @@ class EnvRendering(unittest.TestCase):
 
     def test_fixed_lines_preserved(self):
         env = T.render_env({"HTTPS_PORT": "6969"})
-        self.assertIn("AUTH_MODE=client-cert", env)
         self.assertIn("VAULT_ENABLED=true", env)
+        self.assertIn("VAULT_PKI_ROLE=lxd", env)
         self.assertIn("AUDIT_DB_ENABLED=true", env)
 
     def test_refuse_non_fillable_key(self):
         with self.assertRaises(KeyError):
-            T.render_env({"AUTH_MODE": "nope"})
+            T.render_env({"VAULT_ENABLED": "false"})
 
     def test_set_and_get_value(self):
         env = T.render_env({"VAULT_TOKEN": ""})
@@ -128,3 +134,104 @@ class AnswerFileMerge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# Upgrade (pure parts; the live upgrade runs against a real RC1 install in QA)
+# ---------------------------------------------------------------------------
+
+from orcastra_mini_install import upgrade as U       # noqa: E402
+from orcastra_mini_install import backups as B       # noqa: E402
+
+RC1_ENV = """# Profile
+CONTAINER_PREFIX=orcastra-mini
+APP_VERSION=1.0.0-RC1
+HTTPS_PORT=6969
+AUTH_MODE=client-cert
+NEXT_PUBLIC_AUTH_MODE=client-cert
+POSTGRES_PASSWORD=keepme
+SECRET_KEY=%s
+LOCAL_JWT_SECRET=%s
+AUTH_PROXY_SECRET=short
+BOOTSTRAP_ADMIN_TOKEN=
+VAULT_ENABLED=true
+VAULT_TOKEN=hvs.keep
+LOCAL_JWT_TTL_SECONDS=3600
+CUSTOM_OPERATOR_KEY=stays
+""" % ("a" * 64, "b" * 64)
+
+
+class UpgradeEnvMerge(unittest.TestCase):
+    def test_existing_values_stay_and_the_version_moves(self):
+        merged, added, rotated = U.merge_env(RC1_ENV, "1.0.0")
+        self.assertIn("APP_VERSION=1.0.0\n", merged)
+        for line in ("POSTGRES_PASSWORD=keepme", "VAULT_TOKEN=hvs.keep", "LOCAL_JWT_TTL_SECONDS=3600",
+                     "CUSTOM_OPERATOR_KEY=stays", "LOCAL_JWT_SECRET=" + "b" * 64):
+            self.assertIn(line, merged)
+
+    def test_new_documented_keys_are_added_with_their_defaults(self):
+        merged, added, _ = U.merge_env(RC1_ENV, "1.0.0")
+        for key in ("HTTPS_BIND", "UPLOADS_DIR", "VAULT_PKI_ROLE", "AUDIT_DB_RETENTION_DAYS", "CERT_SELF_RENEW_ENABLED"):
+            self.assertIn(key, added)
+        self.assertIn("HTTPS_BIND=0.0.0.0", merged)
+        # a placeholder value is never written into a live .env
+        self.assertNotIn("<set a strong value>", merged)
+
+    def test_a_secret_too_short_for_this_release_is_replaced(self):
+        merged, _, rotated = U.merge_env(RC1_ENV, "1.0.0")
+        self.assertEqual(rotated, ["AUTH_PROXY_SECRET"])
+        value = T.get_env_value(merged, "AUTH_PROXY_SECRET")
+        self.assertGreaterEqual(len(value), 32)
+
+    def test_merging_twice_adds_nothing_more(self):
+        once, _, _ = U.merge_env(RC1_ENV, "1.0.0")
+        twice, added, rotated = U.merge_env(once, "1.0.0")
+        self.assertEqual((added, rotated), ([], []))
+        self.assertEqual(once, twice)
+
+
+class UpgradeEmailPlan(unittest.TestCase):
+    def test_rules_match_the_database_revision(self):
+        rows = [("aa", "admin", ""), ("bb", "qa-partner.users.orcastra.internal", "QA Partner"),
+                ("cc", "t1.users.orcastra.internal", "same@example.org"),
+                ("dd", "t2.users.orcastra.internal", "same@example.org"),
+                ("ee", "solo.users.orcastra.internal", "Solo@Example.org")]
+        plan = {fp: (email, source) for fp, _cn, _d, email, source in U.plan_emails(rows, {})}
+        self.assertEqual(plan["aa"], ("admin@users.orcastra.internal", "generated"))
+        self.assertEqual(plan["bb"], ("qa-partner@users.orcastra.internal", "generated"))
+        self.assertEqual(plan["cc"][1], "generated")   # a shared display name goes to neither
+        self.assertEqual(plan["dd"][1], "generated")
+        self.assertEqual(plan["ee"], ("solo@example.org", "display name"))
+
+    def test_a_chosen_address_wins_and_none_repeat(self):
+        rows = [("aa", "x.y", "Ops"), ("bb", "x.z", "Other")]
+        plan = U.plan_emails(rows, {"aa": "ops@example.org"})
+        self.assertEqual(plan[0][3], "ops@example.org")
+        self.assertEqual(len({p[3] for p in plan}), 2)
+
+
+class UpgradeOrdering(unittest.TestCase):
+    def test_a_release_candidate_sorts_before_its_release(self):
+        self.assertLess(U._version_tuple("1.0.0-RC1"), U._version_tuple("1.0.0"))
+        self.assertLess(U._version_tuple("1.0.0"), U._version_tuple("1.0.1"))
+        self.assertLess(U._version_tuple("1.0.0-RC1"), U._version_tuple("1.0.0-RC2"))
+
+
+class BackupRestoreSafety(unittest.TestCase):
+    def test_a_backup_cannot_write_outside_the_install_dir(self):
+        import tarfile
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join(root, "b")
+            os.makedirs(src)
+            evil = os.path.join(root, "evil.txt")
+            with open(evil, "w") as fh:
+                fh.write("x")
+            with tarfile.open(os.path.join(src, "files.tar.gz"), "w:gz") as tar:
+                tar.add(evil, arcname="../../escape.txt")
+            ctx = SimpleNamespace(install_dir=os.path.join(root, "install"))
+            os.makedirs(ctx.install_dir)
+            with self.assertRaises(Exception):
+                B.restore_files(ctx, src)
+            self.assertFalse(os.path.exists(os.path.join(root, "escape.txt")))

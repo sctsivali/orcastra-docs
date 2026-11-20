@@ -7,6 +7,7 @@ secret are injected), hand over admin.p12, shred the key material.
 
 Both paths then close the one-shot window: blank BOOTSTRAP_ADMIN_TOKEN and recreate backend.
 """
+import json
 import os
 import shutil
 import tempfile
@@ -67,7 +68,7 @@ def _server_side(ctx, token):
                        "-keyout", key, "-out", crt, "-subj", f"/CN={cn}"])
         _openssl(ctx, ["pkcs12", "-export", "-passout", f"pass:{p12_pass}",
                        "-inkey", key, "-in", crt, "-out", p12], secret=[f"pass:{p12_pass}"])
-        url = f"https://127.0.0.1:{ctx.https_port}/api/v1/auth/cert-bootstrap"
+        url = f"https://{ctx.edge_host}:{ctx.https_port}/api/v1/auth/cert-bootstrap"
         code, body = _curl_bootstrap(ctx, url, crt, key, token)
         if code != 200:
             raise BootstrapError(f"cert-bootstrap returned HTTP {code}.",
@@ -96,10 +97,14 @@ def _openssl(ctx, args, secret=()):
 
 
 def _curl_bootstrap(ctx, url, crt, key, token):
+    payload = {"bootstrap_token": token}
+    if getattr(ctx.flags, "admin_email", None):
+        payload["email"] = ctx.flags.admin_email
+    body_json = json.dumps(payload)
     argv = ["curl", "-sk", "-o", "-", "-w", "\n%{http_code}", url,
             "--cert", crt, "--key", key, "-H", "Content-Type: application/json",
-            "-d", '{"bootstrap_token":"%s"}' % token]
-    res = ctx.proc.run(argv, secret_args=['{"bootstrap_token":"%s"}' % token], mutating=True, timeout=60)
+            "-d", body_json]
+    res = ctx.proc.run(argv, secret_args=[body_json], mutating=True, timeout=60)
     out = res.out.rstrip("\n")
     code_str = out.rsplit("\n", 1)[-1] if "\n" in out else out
     body = out[: -len(code_str)].rstrip("\n") if code_str.isdigit() else out

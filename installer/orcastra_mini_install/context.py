@@ -82,6 +82,12 @@ class InstallContext:
         return int(self.cfg.get("https_port", 6969))
 
     @property
+    def edge_host(self):
+        """Where this host reaches its own nginx: the bind address, or loopback for all interfaces."""
+        bind = self.cfg.get("https_bind") or "0.0.0.0"
+        return "127.0.0.1" if bind in ("0.0.0.0", "::") else bind
+
+    @property
     def base_url(self):
         return self.cfg.get("base_url", f"https://{self.cfg.get('host', 'localhost')}:{self.https_port}")
 

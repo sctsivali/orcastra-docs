@@ -42,8 +42,29 @@ Vault, and nginx. Only nginx is published to the host.
 
 ```bash
 cat > docker-compose.yml <<'EOF'
+# =============================================================================
+# Orcastra Mini: one host, TLS client-certificate sign-in
+# =============================================================================
+# nginx is the only published port. It asks every browser for a client certificate and forwards
+# it, with AUTH_PROXY_SECRET, to the frontend and backend, which are reachable only on the
+# compose network. Vault runs beside them and answers on loopback for init and unseal.
+#
+#   docker compose -p "$CONTAINER_PREFIX" -f docker-compose.mini.yml --env-file .env up -d
+#
+# Names kept from Mini 1.0.0-RC1 so an upgrade reuses the same project, services and volumes:
+# the project is CONTAINER_PREFIX, the services postgres/redis/vault/backend/frontend/nginx, the
+# volumes postgres-data/redis-data/vault-data.
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:17-alpine
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-postgres
     restart: always
@@ -53,6 +74,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    shm_size: ${POSTGRES_SHM_SIZE:-256mb}
     networks: [orcastra-mini]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -62,6 +84,7 @@ services:
       start_period: 10s
 
   redis:
+    logging: *default-logging
     image: redis:8-alpine
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-redis
     restart: always
@@ -77,48 +100,61 @@ services:
       start_period: 5s
 
   vault:
+    logging: *default-logging
     image: hashicorp/vault:1.17
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-vault
     restart: always
-    # Start as root only to fix the data-volume ownership, then drop to the vault user.
+    # Starts as root only to fix the data volume's ownership, then runs as the vault user.
     user: root
     entrypoint: ["sh", "-c", "chown -R 100:1000 /vault/data && exec docker-entrypoint.sh server"]
     cap_add: [IPC_LOCK]
     ports:
-      - "127.0.0.1:8200:8200"   # local-only admin access for init/unseal
+      - "127.0.0.1:${VAULT_HOST_PORT:-8200}:8200"   # loopback only, for init and unseal
     volumes:
       - vault-data:/vault/data
       - ./config/vault/vault.hcl:/vault/config/vault.hcl:ro
     networks: [orcastra-mini]
 
   backend:
-    image: svlct/orcastra-dashboard-mini:backend-1.0.0-RC1
+    logging: *default-logging
+    image: ${MINI_IMAGE_REPO:-svlct/orcastra-dashboard-mini}:backend-${APP_VERSION:-1.0.0}
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-backend
     restart: always
-    # No host port. The backend is reachable only on the Docker network.
+    # No published port: only nginx and the frontend reach the backend.
     env_file: [.env]
     environment:
-      - APP_VERSION=${APP_VERSION:-1.0.0-RC1}
-      - DEBUG=${DEBUG:-false}
+      - ORCASTRA_EDITION=mini
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
       - DATABASE_URL=${DATABASE_URL}
       - AUTH_ENABLED=true
-      - AUTH_MODE=client-cert
       - LOCAL_JWT_SECRET=${LOCAL_JWT_SECRET:?LOCAL_JWT_SECRET is required}
-      - LOCAL_JWT_TTL_SECONDS=${LOCAL_JWT_TTL_SECONDS:-3600}
-      - BOOTSTRAP_ADMIN_TOKEN=${BOOTSTRAP_ADMIN_TOKEN:-}
+      - LOCAL_JWT_TTL_SECONDS=${LOCAL_JWT_TTL_SECONDS:-900}
       - AUTH_PROXY_SECRET=${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
       - TRUSTED_AUTH_PROXY_CIDRS=${TRUSTED_AUTH_PROXY_CIDRS:-}
+      - BOOTSTRAP_ADMIN_TOKEN=${BOOTSTRAP_ADMIN_TOKEN:-}
       - CLIENT_CERT_TTL_DAYS=${CLIENT_CERT_TTL_DAYS:-365}
-      - AUDIT_DB_ENABLED=true
+      - AUDIT_DB_ENABLED=${AUDIT_DB_ENABLED:-true}
+      - AUDIT_DB_RETENTION_DAYS=${AUDIT_DB_RETENTION_DAYS:-0}
+      - CERT_SELF_RENEW_ENABLED=${CERT_SELF_RENEW_ENABLED:-true}
       - VAULT_ENABLED=true
       - VAULT_ADDR=${VAULT_ADDR:-http://vault:8200}
       - VAULT_TOKEN=${VAULT_TOKEN}
       - VAULT_PKI_ROLE=${VAULT_PKI_ROLE:-lxd}
+      # After a host reboot Vault starts sealed; an Administrator unseals it from Host Health.
+      - VAULT_UNSEAL_UI_ENABLED=${VAULT_UNSEAL_UI_ENABLED:-true}
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
+      # Two workers share tickets and sessions through Redis; raise for many concurrent consoles.
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+      # LAN clients have private addresses; the frontend forwards nginx's view of each one.
+      - ALLOW_PRIVATE_FORWARDED_IPS=true
       - SECRET_KEY=${SECRET_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS}
+      - ORCASTRA_DOMAIN=${ORCASTRA_DOMAIN:-orcastra.io}
     volumes:
       - ./config:/app/config:rw
-      - /var/orcastra/uploads:/app/uploads:rw
+      - ${UPLOADS_DIR:-/var/orcastra/uploads}:/app/uploads:rw
     networks: [orcastra-mini]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -126,45 +162,59 @@ services:
       redis: {condition: service_healthy}
       postgres: {condition: service_healthy}
       vault: {condition: service_started}
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
+    cpus: ${BACKEND_CPUS:-2}
+    stop_grace_period: 30s
+    labels: ["${CONTAINER_PREFIX:-orcastra-mini}.autoheal=true"]
     security_opt:
       - no-new-privileges:true
+    tmpfs:
+      - /tmp:mode=1777,size=${BACKEND_TMPFS_SIZE:-256m}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4050/health')"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4050/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
       retries: 5
       start_period: 120s
 
   frontend:
-    image: svlct/orcastra-dashboard-mini:frontend-1.0.0-RC1
+    logging: *default-logging
+    image: ${MINI_IMAGE_REPO:-svlct/orcastra-dashboard-mini}:frontend-${APP_VERSION:-1.0.0}
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-frontend
     restart: always
-    # No host port - only nginx talks to the frontend.
+    # No published port: only nginx reaches the frontend.
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - NEXT_PUBLIC_AUTH_MODE=client-cert
       - INTERNAL_BACKEND_URL=http://backend:4050
-      - AUTH_MODE=client-cert
       - AUTH_PROXY_SECRET=${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - AUTH_TRUST_HOST=true
+      - CSP_SCRIPT_POLICY=${CSP_SCRIPT_POLICY:-enforce}
+      - NEXT_PUBLIC_BUG_REPORT_URL=${NEXT_PUBLIC_BUG_REPORT_URL:-}
+      - NEXT_PUBLIC_COMMUNITY_URL=${NEXT_PUBLIC_COMMUNITY_URL:-}
+      - MAP_TILE_URL=${MAP_TILE_URL:-}
+      - MAP_TILE_URL_DARK=${MAP_TILE_URL_DARK:-}
+      - MAP_TILE_ATTRIBUTION=${MAP_TILE_ATTRIBUTION:-}
+      - MAP_TILE_ATTRIBUTION_URL=${MAP_TILE_ATTRIBUTION_URL:-}
     networks: [orcastra-mini]
     depends_on:
       backend: {condition: service_healthy}
+    labels: ["${CONTAINER_PREFIX:-orcastra-mini}.autoheal=true"]
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:2025"]
+      test: ["CMD", "node", "-e", "require('http').get({host:'127.0.0.1',port:2025,path:'/healthz',timeout:5000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
   nginx:
+    logging: *default-logging
     image: nginx:1.27-alpine
     container_name: ${CONTAINER_PREFIX:-orcastra-mini}-nginx
     restart: always
     ports:
-      - "${HTTPS_PORT:-6969}:443"
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-6969}:443"
     environment:
       - AUTH_PROXY_SECRET=${AUTH_PROXY_SECRET:?AUTH_PROXY_SECRET is required}
       - NGINX_ENVSUBST_FILTER=^AUTH_PROXY_SECRET$$
@@ -173,12 +223,34 @@ services:
       - ./config/nginx/certs:/etc/nginx/certs:ro
     networks: [orcastra-mini]
     depends_on: [frontend]
+    labels: ["${CONTAINER_PREFIX:-orcastra-mini}.autoheal=true"]
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--no-check-certificate", "--spider", "https://127.0.0.1:443"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--no-check-certificate", "--spider", "https://127.0.0.1:443/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  # Restarts a labelled container Docker marks unhealthy (an app whose event loop is wedged stays
+  # alive and serves nothing, which restart: always never sees). Datastores and Vault are not
+  # labelled: restarting them on a health blip is worse than the blip, and a restarted Vault comes
+  # back sealed. important: docker.sock is root-equivalent; network_mode none leaves it no network.
+  autoheal:
+    logging: *default-logging
+    image: willfarrell/autoheal:1.2.0
+    container_name: ${CONTAINER_PREFIX:-orcastra-mini}-autoheal
+    restart: always
+    network_mode: none
+    environment:
+      # The project's own label: a host running other stacks keeps its autoheal decisions apart.
+      - AUTOHEAL_CONTAINER_LABEL=${CONTAINER_PREFIX:-orcastra-mini}.autoheal
+      - AUTOHEAL_INTERVAL=${AUTOHEAL_INTERVAL:-10}
+      - AUTOHEAL_START_PERIOD=${AUTOHEAL_START_PERIOD:-300}
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=${AUTOHEAL_DEFAULT_STOP_TIMEOUT:-30}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   orcastra-mini:
@@ -200,6 +272,19 @@ log lines.
 ```bash
 mkdir -p config/nginx/certs
 cat > config/nginx/mini.conf <<'EOF'
+# nginx for Orcastra Mini: TLS, the client-certificate request, and routing.
+# Mounted as a template so ${AUTH_PROXY_SECRET} is substituted at start (NGINX_ENVSUBST_FILTER
+# limits substitution to that variable, leaving $ssl_* and the rest to nginx).
+#
+# Routing:
+#   /api/v1/auth/*  backend: certificate sign-in and first-administrator enrollment
+#   /api/v1/mcp     backend: MCP clients authenticate with integration keys, never certificates
+#   WebSocket       backend: consoles, terminals, feeds (single-use tickets)
+#   everything else frontend, which proxies the rest of /api/v1 with the session
+#
+# The certificate headers are always overwritten from the TLS layer, and every hop to the
+# frontend or backend carries the proxy secret: a header a browser sends never counts.
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -210,8 +295,7 @@ map $http_upgrade $orcastra_upstream {
     websocket http://backend:4050;
 }
 
-# Console/terminal/monitoring WebSockets carry the session token as ?token=<JWT>. Redact the
-# query string from WebSocket request lines so a replayable token is not written to the log.
+# Socket URLs carry a single-use ticket in the query string; keep it out of the access log.
 map $http_upgrade $logged_request {
     default   $request;
     websocket "$request_method $uri [ws]";
@@ -233,15 +317,25 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
-    # Trust-on-first-use: request a client cert but do not reject unknown CAs. The
-    # application decides trust from the fingerprint; revocation is enforced in the app layer.
+    # Trust on first use: ask for any client certificate and let the application decide whose it
+    # is. optional_no_ca consults no CRL; revocation is enforced by the application per request.
     ssl_verify_client optional_no_ca;
     ssl_verify_depth  2;
+
+    # No session resumption: every new connection presents the browser's current certificate,
+    # so switching certificates takes effect on the next connection.
+    ssl_session_tickets off;
+    ssl_session_cache   off;
+    keepalive_timeout   15s;
+
+    # The escaped certificate rides on every request as a header (2 to 4 KB).
+    large_client_header_buffers 8 16k;
 
     client_max_body_size 0;
     resolver 127.0.0.11 valid=30s ipv6=off;
 
-    # Cert-login / bootstrap: straight to the backend with the verified cert + proxy secret.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
     location ^~ /api/v1/auth/ {
         set $auth_upstream http://backend:4050;
         proxy_pass $auth_upstream;
@@ -252,30 +346,54 @@ server {
         proxy_set_header X-SSL-Client-S-DN    $ssl_client_s_dn;
         proxy_set_header X-Auth-Proxy-Secret  "${AUTH_PROXY_SECRET}";
 
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Host               $http_host;
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Orcastra-Client-IP $remote_addr;
+        proxy_set_header X-Forwarded-For    $remote_addr;
+        proxy_set_header X-Forwarded-Proto  https;
+    }
+
+    location ^~ /api/v1/mcp {
+        set $mcp_upstream http://backend:4050;
+        proxy_pass $mcp_upstream;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+
+        # Integration-key callers: no certificate headers, no proxy secret.
+        proxy_set_header X-SSL-Client-Verify  "";
+        proxy_set_header X-SSL-Client-Cert    "";
+        proxy_set_header X-SSL-Client-S-DN    "";
+        proxy_set_header X-Auth-Proxy-Secret  "";
+
+        proxy_set_header Host               $http_host;
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Orcastra-Client-IP $remote_addr;
+        proxy_set_header X-Forwarded-For    $remote_addr;
+        proxy_set_header X-Forwarded-Proto  https;
+        proxy_read_timeout 3600s;
     }
 
     location / {
         set $upstream $orcastra_upstream;
         proxy_pass $upstream;
         proxy_http_version 1.1;
+        proxy_request_buffering off;
 
-        # WebSocket upgrade for console / terminal / monitoring.
         proxy_set_header Upgrade    $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
 
-        # Always overwrite from the TLS layer so a browser cannot inject forged cert headers.
         proxy_set_header X-SSL-Client-Verify $ssl_client_verify;
         proxy_set_header X-SSL-Client-Cert   $ssl_client_escaped_cert;
         proxy_set_header X-SSL-Client-S-DN   $ssl_client_s_dn;
+        proxy_set_header X-Auth-Proxy-Secret "${AUTH_PROXY_SECRET}";
 
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        # Host with its port, so redirects and sign-in callbacks keep the published port.
+        proxy_set_header Host               $http_host;
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Orcastra-Client-IP $remote_addr;
+        proxy_set_header X-Forwarded-For    $remote_addr;
+        proxy_set_header X-Forwarded-Host   $http_host;
+        proxy_set_header X-Forwarded-Proto  https;
 
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -317,12 +435,13 @@ on its own and once inside `DATABASE_URL`.
 
 ```bash
 cat > .env <<'EOF'
-# Profile
+# Deployment
 CONTAINER_PREFIX=orcastra-mini
-APP_VERSION=1.0.0-RC1
+APP_VERSION=1.0.0
 HTTPS_PORT=6969
-AUTH_MODE=client-cert
-NEXT_PUBLIC_AUTH_MODE=client-cert
+# The address nginx listens on; 0.0.0.0 is every interface.
+HTTPS_BIND=0.0.0.0
+UPLOADS_DIR=/var/orcastra/uploads
 
 # Database
 POSTGRES_USER=orcastra
@@ -337,22 +456,25 @@ NEXTAUTH_SECRET=
 AUTH_PROXY_SECRET=
 BOOTSTRAP_ADMIN_TOKEN=
 
-# Session and certificates
-LOCAL_JWT_TTL_SECONDS=3600
+# Sessions and certificates
+LOCAL_JWT_TTL_SECONDS=900
 CLIENT_CERT_TTL_DAYS=365
+CERT_SELF_RENEW_ENABLED=true
 
 # Vault (set VAULT_TOKEN after step 6)
 VAULT_ENABLED=true
 VAULT_ADDR=http://vault:8200
 VAULT_TOKEN=
+VAULT_PKI_ROLE=lxd
 
 # URLs (use your host and HTTPS_PORT)
 NEXTAUTH_URL=https://your-host.example.com:6969
 NEXT_PUBLIC_API_URL=https://your-host.example.com:6969
 CORS_ORIGINS=https://your-host.example.com:6969
 
-# Audit
+# Audit log (0 keeps every row)
 AUDIT_DB_ENABLED=true
+AUDIT_DB_RETENTION_DAYS=0
 EOF
 ```
 

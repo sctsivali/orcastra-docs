@@ -10,6 +10,20 @@ def run(ctx):
         ctx.log.detail("[dry-run] would run: docker compose pull && up -d")
         return
 
+    if ctx.flags.no_pull:
+        ctx.log.ok("Using the images already on this host (--no-pull).")
+    else:
+        _pull(ctx)
+
+    ctx.log.info("Starting containers ...")
+    up = ctx.proc.run(ctx.compose_argv("up", "-d"), mutating=True, timeout=600)
+    if not up.ok:
+        raise DockerError("docker compose up failed.",
+                          remediation=up.combined.strip()[-500:] or "Inspect with: docker compose logs")
+    ctx.log.ok("Containers started.")
+
+
+def _pull(ctx):
     ctx.log.info("Pulling images (this can take a few minutes) ...")
     pull = ctx.proc.run(ctx.compose_argv("pull"), mutating=True, timeout=1800)
     if not pull.ok:
@@ -22,9 +36,3 @@ def run(ctx):
                           remediation=pull.combined.strip()[-500:] or "Check network and image tags.")
     ctx.log.ok("Images pulled.")
 
-    ctx.log.info("Starting containers ...")
-    up = ctx.proc.run(ctx.compose_argv("up", "-d"), mutating=True, timeout=600)
-    if not up.ok:
-        raise DockerError("docker compose up failed.",
-                          remediation=up.combined.strip()[-500:] or "Inspect with: docker compose logs")
-    ctx.log.ok("Containers started.")

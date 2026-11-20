@@ -15,7 +15,7 @@ def run(ctx):
     ensure_dir(os.path.join(ctx.config_dir, "nginx", "certs"), dry_run=ctx.dry_run)
     ensure_dir(os.path.join(ctx.config_dir, "vault"), dry_run=ctx.dry_run)
 
-    atomic_write(ctx, ctx.compose_path, templates.render_compose(ctx.cfg["image_tag"]), mode=0o644)
+    atomic_write(ctx, ctx.compose_path, templates.render_compose(ctx.cfg["image_tag"], ctx.flags.image_backend, ctx.flags.image_frontend), mode=0o644)
     atomic_write(ctx, ctx.nginx_conf_path, templates.nginx_conf(), mode=0o644)
     atomic_write(ctx, ctx.vault_hcl_path, templates.vault_hcl(), mode=0o644)
 
@@ -38,6 +38,8 @@ def _env_values(ctx):
         "CONTAINER_PREFIX": c["container_prefix"],
         "APP_VERSION": c["image_tag"],
         "HTTPS_PORT": str(c["https_port"]),
+        "HTTPS_BIND": c.get("https_bind") or "0.0.0.0",
+        "UPLOADS_DIR": c.get("uploads_dir") or UPLOADS_DIR,
         "POSTGRES_USER": c["postgres_user"],
         "POSTGRES_PASSWORD": s["POSTGRES_PASSWORD"],
         "POSTGRES_DB": c["postgres_db"],
@@ -56,17 +58,35 @@ def _env_values(ctx):
     }
 
 
+BACKEND_UID = 1000  # the backend image runs as this uid (backend/Dockerfile)
+
+
+def ensure_uploads_owner(ctx, uploads):
+    """The backend writes uploads as uid 1000; a directory still owned by root (as the first Mini
+    installer left it) cannot take an upload."""
+    try:
+        if os.stat(uploads).st_uid != BACKEND_UID and not ctx.dry_run:
+            os.chown(uploads, BACKEND_UID, BACKEND_UID)
+            os.chmod(uploads, 0o750)
+            ctx.log.detail(f"  {uploads} now belongs to uid {BACKEND_UID}, the backend's user")
+    except PermissionError:
+        ctx.log.warn(f"{uploads} is not writable by uid {BACKEND_UID}; run: sudo chown {BACKEND_UID}:{BACKEND_UID} {uploads}")
+
+
 def _ensure_uploads_dir(ctx):
-    if os.path.isdir(UPLOADS_DIR):
+    uploads = ctx.cfg.get("uploads_dir") or UPLOADS_DIR
+    if os.path.isdir(uploads):
+        ensure_uploads_owner(ctx, uploads)
         return
     if ctx.dry_run:
-        ctx.log.detail(f"[dry-run] would create {UPLOADS_DIR}")
+        ctx.log.detail(f"[dry-run] would create {uploads}")
         return
     try:
-        os.makedirs(UPLOADS_DIR, exist_ok=True)
+        os.makedirs(uploads, exist_ok=True)
+        ensure_uploads_owner(ctx, uploads)
     except PermissionError:
         sudo = [] if ctx.cfg.get("is_root") else ["sudo"]
-        res = ctx.proc.run(sudo + ["mkdir", "-p", UPLOADS_DIR], mutating=True)
+        res = ctx.proc.run(sudo + ["mkdir", "-p", uploads], mutating=True)
         if not res.ok:
-            raise InstallError(f"could not create {UPLOADS_DIR}",
-                               remediation=f"Create it manually: sudo mkdir -p {UPLOADS_DIR}")
+            raise InstallError(f"could not create {uploads}",
+                               remediation=f"Create it manually: sudo mkdir -p {uploads}")
