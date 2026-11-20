@@ -133,13 +133,14 @@ def run(ctx):
             "in use by this deployment" if rows_owner else "in use",
             None if rows_owner else f"Free the port or pass --https-port. Inspect with: ss -ltnp | grep :{port}")
 
-    if tcp_port_free("127.0.0.1", 8200):
-        add("Vault loopback 8200", "PASS", "free")
+    vport = int(getattr(ctx.flags, "vault_host_port", None) or 8200)
+    if tcp_port_free("127.0.0.1", vport):
+        add(f"Vault loopback {vport}", "PASS", "free")
     else:
-        rows_owner = _port_owner_is_ours(ctx, 8200)
-        add("Vault loopback 8200", "PASS" if rows_owner else "FAIL",
+        rows_owner = _port_owner_is_ours(ctx, vport)
+        add(f"Vault loopback {vport}", "PASS" if rows_owner else "FAIL",
             "in use by this deployment" if rows_owner else "in use by another process",
-            None if rows_owner else "Port 127.0.0.1:8200 must be free for Vault init/unseal.")
+            None if rows_owner else f"Port 127.0.0.1:{vport} is taken (another Vault?): pass --vault-host-port with a free one.")
 
     _print_table(ctx, results)
     ctx.preflight = results

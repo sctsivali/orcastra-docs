@@ -31,6 +31,7 @@ VALUE_DEFAULTS = {
     "unseal_threshold": 3,
     "admin_cn": "admin",
     "https_bind": "0.0.0.0",
+    "vault_host_port": 8200,
     "uploads_dir": "/var/orcastra/uploads",
 }
 INT_FLAGS = {"https_port", "client_cert_ttl_days", "jwt_ttl_seconds", "ca_ttl_hours",
@@ -87,6 +88,8 @@ def build_parser():
                    help="persist unseal keys locally + optional auto-unseal (less secure)")
     v.add_argument("--auto-unseal-unit", action="store_true",
                    help="(convenience) install a systemd unit that unseals on boot")
+    v.add_argument("--vault-host-port", type=int, default=None,
+                   help="loopback port Vault is published on (default 8200; change it when the host runs its own Vault)")
     v.add_argument("--unseal-shares", type=int, default=None)
     v.add_argument("--unseal-threshold", type=int, default=None)
     v.add_argument("--skip-vault-bootstrap", action="store_true")

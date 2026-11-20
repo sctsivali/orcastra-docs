@@ -20,6 +20,10 @@ def run(ctx):
     atomic_write(ctx, ctx.vault_hcl_path, templates.vault_hcl(), mode=0o644)
 
     env_text = templates.render_env(_env_values(ctx))
+    vport = int(getattr(ctx.flags, "vault_host_port", None) or 8200)
+    if vport != 8200:
+        # The compose file publishes Vault on ${VAULT_HOST_PORT:-8200}; only a non-default port is written.
+        env_text = env_text.rstrip("\n") + f"\n\n# Vault's loopback port on this host\nVAULT_HOST_PORT={vport}\n"
     atomic_write(ctx, ctx.env_path, env_text, mode=0o600)
 
     _ensure_uploads_dir(ctx)
