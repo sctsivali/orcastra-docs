@@ -81,7 +81,7 @@ the first part of the certificate's common name (`admin@users.orcastra.internal`
 | `401` | No trusted client certificate reached the backend (check `AUTH_PROXY_SECRET`) |
 | `403` | The bootstrap token is wrong, or `BOOTSTRAP_ADMIN_TOKEN` is not set |
 | `409` | An Administrator already exists, or the certificate or email is already enrolled |
-| `415` | The request was not sent as `application/json` |
+| `415` or `422` | The request was not sent as `application/json`, or the token (16 to 256 characters) or email is malformed |
 | `429` | More than 5 attempts from one address in 10 minutes |
 
 !!! warning "Close the window after bootstrap"

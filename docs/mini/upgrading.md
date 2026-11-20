@@ -234,9 +234,8 @@ removes old backups; delete them when you no longer need to roll back.
 
 !!! note "Deployments built by hand"
     A deployment created from the [Quick Start](quick-start.md) can be upgraded the same way with
-    `--install-dir <its directory>`, provided its Compose project name equals `CONTAINER_PREFIX`.
-    The Quick Start's `orcastra-mini` directory gives the project name `orcastra-mini`, which is
-    the default prefix.
+    `--install-dir <its directory>`, provided its Compose project name equals `CONTAINER_PREFIX`
+    (the Quick Start's `.env` sets `COMPOSE_PROJECT_NAME` for that).
 
 ## Troubleshooting
 

@@ -20,7 +20,8 @@ used.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CONTAINER_PREFIX` | `orcastra-mini` | Compose project name and the prefix of every container name (`orcastra-mini-backend`, ...). Volumes are named `<prefix>_postgres-data`, `<prefix>_vault-data`, `<prefix>_redis-data`. |
+| `CONTAINER_PREFIX` | `orcastra-mini` | The prefix of every container name (`orcastra-mini-backend`, ...). The installer and upgrades use it as the Compose project name too. |
+| `COMPOSE_PROJECT_NAME` | `orcastra-mini` | The Compose project name, which names the volumes (`<project>_postgres-data`, `<project>_vault-data`, `<project>_redis-data`). Keep it equal to `CONTAINER_PREFIX`; an upgrade from RC1 adds it with that value. |
 | `APP_VERSION` | `1.0.0` | The release to run: the Compose file pulls `backend-<APP_VERSION>` and `frontend-<APP_VERSION>`. Change releases with the installer's [`--upgrade`](upgrading.md), which also backs up and migrates. |
 | `HTTPS_PORT` | `6969` | The single public HTTPS port published by nginx. |
 | `HTTPS_BIND` | `0.0.0.0` | The host address nginx listens on. `0.0.0.0` is every interface; `127.0.0.1` keeps the dashboard reachable only from the host itself (for example over an SSH tunnel), and a specific interface address limits it to that network. |
@@ -59,7 +60,7 @@ used.
 |---|---|---|
 | `VAULT_ENABLED` | `true` | Kept for reference. The Compose file always sets `VAULT_ENABLED=true` for the backend, and Mini refuses to start without Vault. |
 | `VAULT_ADDR` | `http://vault:8200` | Vault address on the Docker network. |
-| `VAULT_TOKEN` | (set after Vault is initialized) | Token that can use the `pki_int` mount to issue certificates. The installer writes the root token here. |
+| `VAULT_TOKEN` | (set after Vault is initialized) | Token for the KV mount `secret/` (cluster registry and credentials: read, write, list, delete) and `pki_int/issue/<role>` (certificates). The installer writes the root token here. |
 | `VAULT_PKI_ROLE` | `lxd` | The `pki_int` role operator certificates are issued from (`pki_int/issue/<role>`). The installer and the Quick Start create the role `lxd`. |
 
 ## URLs
@@ -92,7 +93,7 @@ group is read by the Compose file; the second by the backend, which receives the
 | `VAULT_UNSEAL_UI_ENABLED` | `true` | Lets an Administrator submit Vault unseal key shares from the dashboard. `false` keeps unsealing on the host only. |
 | `WEB_CONCURRENCY` | `2` | Backend worker processes. They share tickets and sessions through Redis; raise it for many concurrent consoles. |
 | `RUN_MIGRATIONS` | `true` | The backend migrates the database to the release's schema when it starts. |
-| `VAULT_HOST_PORT` | `8200` | Loopback port on the host where Vault answers for init and unseal. |
+| `VAULT_HOST_PORT` | `8200` | Loopback port on the host where Vault answers for init and unseal. Change it when the host already runs a Vault on 8200; the installer's `--vault-host-port` writes it. |
 | `MINI_IMAGE_REPO` | `svlct/orcastra-dashboard-mini` | Repository the backend and frontend images are pulled from (for example a private mirror). |
 | `BACKEND_MEM_LIMIT`, `BACKEND_CPUS` | `2g`, `2` | Memory and CPU limits of the backend container. |
 | `BACKEND_TMPFS_SIZE` | `256m` | Size of the backend's `/tmp` tmpfs. |

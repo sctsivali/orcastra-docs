@@ -168,6 +168,7 @@ Useful options:
 | `--host`, `--host-is-ip` / `--host-is-dns` | Set the address and its certificate SAN type |
 | `--https-port`, `--container-prefix` | Published port and container/volume namespace |
 | `--https-bind` | The host address nginx listens on (default `0.0.0.0`, every interface; `127.0.0.1` for tunnel-only access) |
+| `--vault-host-port` | The loopback port Vault is published on (default `8200`); pass a free one when the host already runs its own Vault |
 | `--uploads-dir` | Host directory for image and ISO uploads (default `/var/orcastra/uploads`) |
 | `--admin-cn`, `--admin-email` | Common name of the first Administrator's certificate (default `admin`) and, with `--quick`, its email |
 | `--version-tag` | The release to install (default `1.0.0`) |

@@ -52,7 +52,7 @@ cat > docker-compose.yml <<'EOF'
 # it, with AUTH_PROXY_SECRET, to the frontend and backend, which are reachable only on the
 # compose network. Vault runs beside them and answers on loopback for init and unseal.
 #
-#   docker compose -p "$CONTAINER_PREFIX" -f docker-compose.mini.yml --env-file .env up -d
+#   docker compose up -d     (from the deployment directory; .env names the project)
 #
 # Names kept from Mini 1.0.0-RC1 so an upgrade reuses the same project, services and volumes:
 # the project is CONTAINER_PREFIX, the services postgres/redis/vault/backend/frontend/nginx, the
@@ -452,6 +452,9 @@ explains every key.
 cat > .env <<'EOF'
 # Deployment
 CONTAINER_PREFIX=orcastra-mini
+# The Compose project name. Keep it equal to CONTAINER_PREFIX: plain `docker compose` commands,
+# the installer and upgrades then all reach the same containers and volumes.
+COMPOSE_PROJECT_NAME=orcastra-mini
 APP_VERSION=1.0.0
 HTTPS_PORT=6969
 # The address nginx listens on; 0.0.0.0 is every interface.
@@ -491,6 +494,12 @@ CORS_ORIGINS=https://your-host.example.com:6969
 AUDIT_DB_ENABLED=true
 AUDIT_DB_RETENTION_DAYS=0
 EOF
+```
+
+Make the file readable by its owner only; it will also hold the Vault token:
+
+```bash
+chmod 600 .env
 ```
 
 !!! warning "Keep secrets out of version control"
@@ -572,10 +581,9 @@ an Administrator exists, they can also unseal Vault from the dashboard
 # Initialise (save the unseal keys and root token somewhere safe and offline)
 docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator init
 
-# Unseal (repeat with 3 different unseal keys)
-docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-1>
-docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-2>
-docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key-3>
+# Unseal: run this 3 times and paste a different unseal key at each prompt
+# (typing the key at the prompt keeps it out of the shell history)
+docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal
 ```
 
 Enable the PKI used to issue client certificates. The issuing CA must outlive the certificates
@@ -593,8 +601,10 @@ docker compose exec vault sh -c '
 '
 ```
 
-Put a token that can use `pki_int` into `.env` as `VAULT_TOKEN` (the root token works to start;
-a scoped token is better for production), then recreate the backend:
+Put a Vault token into `.env` as `VAULT_TOKEN`, then recreate the backend. The root token works
+to start. A scoped token needs read, write, list and delete on the KV mount `secret/` (the
+cluster registry and each cluster's credentials) and update on `pki_int/issue/lxd` (operator
+and cluster certificates):
 
 ```bash
 docker compose up -d backend
@@ -696,7 +706,7 @@ lifecycle and [Operations](operations.md) for day-2 tasks.
 ## Verify the deployment
 
 ```bash
-docker compose ps    # all services healthy
+docker compose ps    # every service healthy; vault shows "Up" (it has no health check)
 ```
 
 - Browsing to the host serves the sign-in page over HTTPS.
