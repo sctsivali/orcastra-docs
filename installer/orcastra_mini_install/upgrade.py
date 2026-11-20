@@ -119,12 +119,19 @@ def _choose_emails(ctx, rows) -> dict:
         for fp, cn, display, email, source in plan:
             if source != "generated":
                 continue
-            answer = ctx.prompt.ask(f"Email for {display or cn}", default=email)
+            answer = ctx.prompt.ask(f"Email for {display or cn}", default=email, key="email-map")
             if answer and answer != email:
                 if not _EMAIL.match(answer):
                     raise InstallError(f"{answer!r} is not an email address")
                 mapped[fp.lower()] = answer.strip().lower()
-        plan = plan_emails(rows, mapped)
+        final = plan_emails(rows, mapped)
+        if final != plan:
+            # An address typed twice, or one another operator already holds, falls back to a
+            # generated one: show what will actually happen before anything changes.
+            ctx.log.info("With your answers, each operator will sign in as:")
+            for _fp, cn, display, email, source in final:
+                ctx.log.detail(f"  {display or cn:<32} -> {email}  ({source})")
+        plan = final
     if len({p[3] for p in plan}) != len(plan):
         raise InstallError("two operators would share one email; choose different addresses")
     return {fp.lower(): email for fp, _cn, _d, email, source in plan if source == "chosen"}

@@ -312,3 +312,30 @@ class ComposeProjectName(unittest.TestCase):
     def test_an_install_writes_the_prefix_as_the_project_name(self):
         env = T.render_env({"CONTAINER_PREFIX": "site-7", "COMPOSE_PROJECT_NAME": "site-7"})
         self.assertIn("COMPOSE_PROJECT_NAME=site-7", env)
+
+
+class InteractiveEmailChoice(unittest.TestCase):
+    def test_a_typed_address_is_used_and_the_final_plan_is_shown(self):
+        from types import SimpleNamespace
+        sys.path.insert(0, os.path.dirname(__file__))
+        from _fakes import FakeLog, FakePrompt
+        ctx = SimpleNamespace(flags=SimpleNamespace(email_map=None), interactive=True,
+                              log=FakeLog(), prompt=FakePrompt(answers={"email-map": "Ops@Example.org"}))
+        rows = [("aa", "admin", "admin"), ("bb", "x.y", "carol@example.org")]
+        chosen = U._choose_emails(ctx, rows)
+        self.assertEqual(chosen, {"aa": "ops@example.org"})
+        shown = " ".join(msg for _lvl, msg in ctx.log.lines)
+        self.assertIn("With your answers", shown)
+        self.assertIn("ops@example.org  (chosen)", shown)
+
+    def test_an_address_another_operator_holds_falls_back_visibly(self):
+        from types import SimpleNamespace
+        sys.path.insert(0, os.path.dirname(__file__))
+        from _fakes import FakeLog, FakePrompt
+        ctx = SimpleNamespace(flags=SimpleNamespace(email_map=None), interactive=True,
+                              log=FakeLog(), prompt=FakePrompt(answers={"email-map": "carol@example.org"}))
+        rows = [("bb", "x.y", "carol@example.org"), ("aa", "admin", "admin")]
+        chosen = U._choose_emails(ctx, rows)
+        self.assertNotIn("aa", chosen)  # carol keeps her address; admin stays generated
+        shown = " ".join(msg for _lvl, msg in ctx.log.lines)
+        self.assertIn("admin@users.orcastra.internal  (generated)", shown)
