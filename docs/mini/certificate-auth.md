@@ -187,6 +187,9 @@ name, expiry with the days left, fingerprint, and the number of other active cer
   renewal endpoint answers `403`. Administrators and Partners then use **Issue Another
   Certificate** on the Operators page.
 
+An operator whose project access has ended (the "No active access" page) can still open
+**My Certificate** from that page to see the certificate and renew it.
+
 An expired certificate cannot sign in, so it cannot be renewed: ask an Administrator (or the
 organization's Partner) for a new certificate.
 
