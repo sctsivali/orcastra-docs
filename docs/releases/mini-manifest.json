@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "product": "orcastra-mini",
-  "generated_at": "2026-11-20T00:00:00Z",
+  "generated_at": "2026-11-20T11:00:00Z",
   "releases": [
     {
       "version": "1.0.0",
@@ -13,6 +13,10 @@
       "images": {
         "backend": "svlct/orcastra-dashboard-mini:backend-1.0.0",
         "frontend": "svlct/orcastra-dashboard-mini:frontend-1.0.0"
+      },
+      "digests": {
+        "backend": "sha256:712b433b66c62796c93cb4b8e35d77a529fe601f53c4735bf667d71c85027a12",
+        "frontend": "sha256:9e5350e30e5689fee96372e64c4061a5c6c4eb1aa695440c9ffdd2b05fb814a5"
       }
     },
     {
