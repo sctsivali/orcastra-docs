@@ -57,8 +57,8 @@ def run(ctx):
                                       "re-run with --repair." % ctx.project)
 
     ctx.log.ok("All services healthy; HTTPS sign-in served; cert SAN coherent.")
-    ctx.log.info("Final manual check: sign in and run Administration -> Audit Log -> "
-                 "Verify integrity (expect a valid chain).")
+    ctx.log.info("Final manual check: sign in and open Administration -> Audit Log -> "
+                 "Verify Integrity (expect an intact chain).")
 
 
 def _san_coherent(ctx):

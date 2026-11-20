@@ -219,7 +219,7 @@ def main(argv=None) -> int:
             log.info(exc.remediation)
         return 2
     except InstallError as exc:
-        log.error(f"[{exc.phase or '?'}] {exc.message}")
+        log.error(f"[{exc.phase}] {exc.message}" if exc.phase else exc.message)
         if exc.remediation:
             print()
             log.info("How to fix: " + exc.remediation)

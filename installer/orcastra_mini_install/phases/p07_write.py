@@ -23,6 +23,7 @@ def run(ctx):
     atomic_write(ctx, ctx.env_path, env_text, mode=0o600)
 
     _ensure_uploads_dir(ctx)
+    ensure_backend_config_dir(ctx)
     ctx.log.ok(f"Wrote docker-compose.yml, config/, and .env to {ctx.install_dir}")
 
 
@@ -61,29 +62,60 @@ def _env_values(ctx):
 BACKEND_UID = 1000  # the backend image runs as this uid (backend/Dockerfile)
 
 
-def ensure_uploads_owner(ctx, uploads):
-    """The backend writes uploads as uid 1000; a directory still owned by root (as the first Mini
-    installer left it) cannot take an upload."""
+def ensure_backend_owned(ctx, path, mode=0o750):
+    """Give `path` to the backend's uid: it writes uploads, node display names and recovery
+    bundles there, and the first Mini installer left such directories owned by root."""
     try:
-        if os.stat(uploads).st_uid != BACKEND_UID and not ctx.dry_run:
-            os.chown(uploads, BACKEND_UID, BACKEND_UID)
-            os.chmod(uploads, 0o750)
-            ctx.log.detail(f"  {uploads} now belongs to uid {BACKEND_UID}, the backend's user")
+        if os.stat(path).st_uid != BACKEND_UID and not ctx.dry_run:
+            os.chown(path, BACKEND_UID, BACKEND_UID)
+            os.chmod(path, mode)
+            ctx.log.detail(f"  {path} now belongs to uid {BACKEND_UID}, the backend's user")
     except PermissionError:
-        ctx.log.warn(f"{uploads} is not writable by uid {BACKEND_UID}; run: sudo chown {BACKEND_UID}:{BACKEND_UID} {uploads}")
+        ctx.log.warn(f"{path} is not writable by uid {BACKEND_UID}; run: sudo chown {BACKEND_UID}:{BACKEND_UID} {path}")
+
+
+def backend_config_dir(ctx):
+    return os.path.join(ctx.config_dir, "backend")
+
+
+# important: only config/backend is the backend's (mounted at /app/config). config/ itself and
+# nginx's key and template stay root's: a backend that owned config/ could swap them, or plant a
+# link that a later restore, run as root, would follow.
+def ensure_backend_config_dir(ctx):
+    path = backend_config_dir(ctx)
+    if ctx.dry_run:
+        ctx.log.detail(f"[dry-run] would create {path} for uid {BACKEND_UID}")
+        return path
+    os.makedirs(path, exist_ok=True)
+    ensure_backend_owned(ctx, path)
+    return path
+
+
+def reown_backend_config(ctx):
+    """After a restore (extracted as root) the backend's directory and files are its own again.
+    Links are never followed."""
+    path = backend_config_dir(ctx)
+    if ctx.dry_run or not os.path.isdir(path) or os.path.islink(path):
+        return
+    for root, dirs, files in os.walk(path, followlinks=False):
+        for name in dirs + files:
+            full = os.path.join(root, name)
+            if not os.path.islink(full):
+                os.chown(full, BACKEND_UID, BACKEND_UID)
+    os.chown(path, BACKEND_UID, BACKEND_UID)
 
 
 def _ensure_uploads_dir(ctx):
     uploads = ctx.cfg.get("uploads_dir") or UPLOADS_DIR
     if os.path.isdir(uploads):
-        ensure_uploads_owner(ctx, uploads)
+        ensure_backend_owned(ctx, uploads)
         return
     if ctx.dry_run:
         ctx.log.detail(f"[dry-run] would create {uploads}")
         return
     try:
         os.makedirs(uploads, exist_ok=True)
-        ensure_uploads_owner(ctx, uploads)
+        ensure_backend_owned(ctx, uploads)
     except PermissionError:
         sudo = [] if ctx.cfg.get("is_root") else ["sudo"]
         res = ctx.proc.run(sudo + ["mkdir", "-p", uploads], mutating=True)

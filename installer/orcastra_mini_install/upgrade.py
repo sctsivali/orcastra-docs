@@ -14,14 +14,18 @@ import os
 import re
 import secrets
 import shutil
+from typing import Optional
 
 from orcastra_core.errors import AbortByUser, InstallError
 
 from . import backups, templates
+from .phases import p10_vault
+from .phases.p07_write import (BACKEND_UID, UPLOADS_DIR, ensure_backend_config_dir, ensure_backend_owned,
+                                reown_backend_config)
 from .dockerutil import compose_ps, http_probe, service_state, tail_logs, wait_for
 
 SYNTHETIC_DOMAIN = "users.orcastra.internal"
-EMAIL_MAP = os.path.join("config", "mini-email-map.json")
+EMAIL_MAP = os.path.join("config", "backend", "mini-email-map.json")  # /app/config in the backend
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_SECRET = 32
 _SECRETS = ("LOCAL_JWT_SECRET", "AUTH_PROXY_SECRET")
@@ -155,8 +159,12 @@ def merge_env(old: str, target_version: str):
 
 
 def _write(path: str, text: str, mode: int = 0o644) -> None:
+    # Created with its final mode: .env must never exist, even for a moment, readable by others.
     tmp = path + ".new"
-    with open(tmp, "w", encoding="utf-8") as fh:
+    if os.path.lexists(tmp):
+        os.remove(tmp)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(text)
     os.chmod(tmp, mode)
     os.replace(tmp, path)
@@ -180,16 +188,42 @@ def _backend_refused(ctx) -> str:
     return ""
 
 
+CRASH_LOOP_RESTARTS = 3
+
+
+def _backend_crash_looping(ctx) -> bool:
+    """A backend that keeps exiting will never turn healthy; waiting out the timeout only delays
+    the rollback. Docker counts the restarts of the container `up` just created."""
+    res = ctx.proc.run(["docker", "inspect", "-f", "{{.RestartCount}}", f"{ctx.project}-backend"], timeout=30)
+    try:
+        return res.ok and int(res.out.strip() or 0) >= CRASH_LOOP_RESTARTS
+    except ValueError:
+        return False
+
+
+def _start_vault_first(ctx, was_unsealed: bool, ui_unseal: bool) -> bool:
+    """Vault starts and is unsealed before the backend, which then boots with its cluster
+    registry and keys readable instead of retrying against a sealed Vault."""
+    ctx.proc.run(ctx.compose_argv("up", "-d", "vault"), mutating=True, timeout=300)
+    return _restore_vault_seal(ctx, was_unsealed, ui_unseal)
+
+
 def _start_and_wait(ctx, timeout: int) -> None:
     up = ctx.proc.run(ctx.compose_argv("up", "-d", "--remove-orphans"), mutating=True, timeout=900)
     if not up.ok:
-        raise InstallError("the stack did not start", remediation=up.combined.strip()[-500:])
+        # Compose only says which container failed; the backend's own log says why.
+        raise InstallError("the stack did not start",
+                           remediation=up.combined.strip()[-300:] + "\n\nBackend log:\n"
+                           + tail_logs(ctx, "backend", lines=40)[-1500:])
     def ready():
         if _backend_healthy(ctx):
             return True
         refused = _backend_refused(ctx)
         if refused:
             raise InstallError("the backend refused the database or its settings", remediation=refused)
+        if _backend_crash_looping(ctx):
+            raise InstallError(f"the backend exited {CRASH_LOOP_RESTARTS} times in a row",
+                               remediation=tail_logs(ctx, "backend", lines=60)[-1500:])
         return False
     if not wait_for(ctx, ready, timeout=timeout, interval=5):
         raise InstallError("the backend did not become healthy in time",
@@ -216,6 +250,44 @@ def _verify(ctx) -> dict:
     return report
 
 
+def _vault_sealed(ctx) -> Optional[bool]:
+    """True or False from `vault status`; None when Vault does not answer."""
+    st = p10_vault._status(ctx)
+    return None if st is None else bool(st.get("sealed", True))
+
+
+def _restore_vault_seal(ctx, was_unsealed: bool, ui_unseal: bool) -> bool:
+    """Leave Vault as the upgrade found it. Restarting Vault seals it, and while it is sealed no
+    cluster can be reached. Returns True when Vault ends unsealed."""
+    if not was_unsealed:
+        return False
+    wait_for(ctx, lambda: _vault_sealed(ctx) is not None, timeout=120, interval=3)
+    if _vault_sealed(ctx) is False:
+        return True
+    persisted = p10_vault._load_persisted(ctx)
+    keys = list(persisted["unseal_keys_b64"]) if persisted else []
+    if not keys and ctx.interactive:
+        threshold = int((p10_vault._status(ctx) or {}).get("t") or ctx.flags.unseal_threshold)
+        ctx.log.info(f"Vault restarted sealed. Paste {threshold} unseal keys to unseal it now, or press Enter to skip.")
+        for i in range(threshold):
+            key = ctx.prompt.ask(f"Unseal key {i + 1}", default="", key="unseal-key")
+            if not key:
+                keys = []
+                break
+            ctx.log.add_secret(key)
+            keys.append(key)
+    if keys:
+        p10_vault._unseal(ctx, keys)
+        if _vault_sealed(ctx) is False:
+            ctx.log.ok("Vault is unsealed again.")
+            return True
+    where = "from Host Health in the dashboard, or " if ui_unseal else ""
+    ctx.log.warn("Vault is sealed: no cluster can be reached until it is unsealed. Unseal it "
+                 f"{where}on this host, once per key: docker exec -it {ctx.project}-vault "
+                 "vault operator unseal -address=http://127.0.0.1:8200")
+    return False
+
+
 def run_upgrade(ctx) -> int:
     target = ctx.flags.version_tag or templates.DEFAULT_IMAGE_TAG
     if not os.path.isfile(ctx.env_path) or not os.path.isfile(ctx.compose_path):
@@ -238,7 +310,9 @@ def run_upgrade(ctx) -> int:
                            remediation="Free space or move the install to a larger disk, then run --upgrade again.")
     if service_state(compose_ps(ctx), "postgres")[0] != "running":
         raise InstallError("the database is not running", remediation=f"Start it: docker compose -p {ctx.project} up -d postgres")
-    ctx.log.ok(f"{free // 2**30} GiB free; the database answers.")
+    vault_was_unsealed = _vault_sealed(ctx) is False
+    ctx.log.ok(f"{free // 2**30} GiB free; the database answers; Vault is "
+               f"{'unsealed' if vault_was_unsealed else 'sealed or stopped'}.")
 
     _step(ctx, 2, total, "Operator emails")
     rows = _identities_to_map(ctx)
@@ -264,21 +338,31 @@ def run_upgrade(ctx) -> int:
         with open(ctx.env_path, encoding="utf-8") as fh:
             merged, added, rotated = merge_env(fh.read(), target)
         _write(ctx.env_path, merged, 0o600)
+        backend_dir = ensure_backend_config_dir(ctx)
+        # The first release mounted all of config/ into the backend; its node display names move
+        # into the directory the backend now gets.
+        old_meta = os.path.join(ctx.config_dir, "node_metadata.json")
+        if os.path.isfile(old_meta) and not os.path.islink(old_meta):
+            os.replace(old_meta, os.path.join(backend_dir, "node_metadata.json"))
+            os.chown(os.path.join(backend_dir, "node_metadata.json"), BACKEND_UID, BACKEND_UID)
         if mapping:
-            _write(os.path.join(ctx.install_dir, EMAIL_MAP), json.dumps(mapping, indent=2), 0o600)
+            # Read by the database revision inside the backend, which runs as uid 1000.
+            map_path = os.path.join(ctx.install_dir, EMAIL_MAP)
+            _write(map_path, json.dumps(mapping, indent=2), 0o600)
+            os.chown(map_path, BACKEND_UID, BACKEND_UID)
         ctx.log.ok(f"Kept every existing value; added {', '.join(added) or 'nothing'}"
                    + (f"; replaced short {', '.join(rotated)}" if rotated else "") + ".")
 
         _step(ctx, 5, total, "Write the deployment files")
-        _write(ctx.compose_path, templates.render_compose(target))
+        # A mirror's images (--image-backend/--image-frontend) apply on an upgrade as on an install.
+        _write(ctx.compose_path, templates.render_compose(target, ctx.flags.image_backend, ctx.flags.image_frontend))
         os.makedirs(os.path.dirname(ctx.nginx_conf_path), exist_ok=True)
         _write(ctx.nginx_conf_path, templates.nginx_conf())
         if not os.path.isfile(ctx.vault_hcl_path):
             _write(ctx.vault_hcl_path, templates.vault_hcl())
-        from .phases.p07_write import UPLOADS_DIR, ensure_uploads_owner
         uploads = backups.env_value(ctx, "UPLOADS_DIR", UPLOADS_DIR)
         os.makedirs(uploads, exist_ok=True)
-        ensure_uploads_owner(ctx, uploads)
+        ensure_backend_owned(ctx, uploads)
         ctx.log.ok("docker-compose.yml and config/nginx/mini.conf written.")
 
         _step(ctx, 6, total, "Images")
@@ -291,6 +375,7 @@ def run_upgrade(ctx) -> int:
             ctx.log.ok("Images pulled.")
 
         _step(ctx, 7, total, "Start and migrate")
+        vault_open = _start_vault_first(ctx, vault_was_unsealed, ui_unseal=True)
         _start_and_wait(ctx, timeout=1200)
         ctx.log.ok("The backend is healthy on the new release.")
 
@@ -301,20 +386,29 @@ def run_upgrade(ctx) -> int:
     except Exception as exc:  # noqa: BLE001 - every failure after the backup is rolled back
         ctx.log.error(f"The upgrade failed: {exc}")
         ctx.log.warn("Restoring the backup and starting the previous release ...")
-        _restore(ctx, dest)
+        # The restore lays the old files over the new ones; a file only this upgrade wrote stays.
+        if os.path.exists(os.path.join(ctx.install_dir, EMAIL_MAP)):
+            os.remove(os.path.join(ctx.install_dir, EMAIL_MAP))
+        _restore(ctx, dest, vault_was_unsealed)
         ctx.log.warn(f"Rolled back to {current}. The backup stays in {dest}.")
-        raise
+        raise InstallError(f"the upgrade to {target} failed; {current} is running again with the data it had",
+                           remediation=getattr(exc, "remediation", None) or str(exc)) from exc
     if mapping:
         os.replace(os.path.join(ctx.install_dir, EMAIL_MAP), os.path.join(dest, "mini-email-map.applied.json"))
     ctx.log.ok(f"Orcastra Mini {target} is running. To return to {current}: "
                f"--rollback {os.path.basename(dest)}")
+    if vault_was_unsealed and not vault_open:
+        ctx.log.warn("Clusters stay unreachable until Vault is unsealed (see above).")
     return 0
 
 
-def _restore(ctx, src: str) -> None:
+def _restore(ctx, src: str, vault_was_unsealed: bool) -> None:
     ctx.proc.run(ctx.compose_argv("down", "--remove-orphans"), mutating=True, timeout=300)
     backups.restore_volumes(ctx, src)
     backups.restore_files(ctx, src)
+    reown_backend_config(ctx)
+    # The restored release may predate unsealing from the dashboard (1.0.0-RC1 does).
+    _start_vault_first(ctx, vault_was_unsealed, ui_unseal=False)
     up = ctx.proc.run(ctx.compose_argv("up", "-d", "--remove-orphans"), mutating=True, timeout=900)
     if not up.ok:
         raise InstallError("the restored release did not start", remediation=up.combined.strip()[-500:])
@@ -324,9 +418,12 @@ def _restore(ctx, src: str) -> None:
 
 
 def run_rollback(ctx, which: str) -> int:
-    found = backups.list_backups(ctx)
+    # Only an upgrade's backup holds the volumes a rollback needs; a --backup dump is restored
+    # with pg_restore (see the operations guide), never half-restored here.
+    found = [p for p in backups.list_backups(ctx) if backups.read_manifest(p).get("volumes")]
     if not found:
-        raise InstallError(f"no backups under {backups.backups_root(ctx)}")
+        raise InstallError(f"no upgrade backup under {backups.backups_root(ctx)}",
+                           remediation="A --backup holds a database dump only: restore it with pg_restore.")
     if which in (None, "", "latest"):
         src = found[-1]
     else:
@@ -340,7 +437,7 @@ def run_rollback(ctx, which: str) -> int:
     if not ctx.flags.assume_yes and not ctx.prompt.confirm(
             "Everything changed since that backup (operators, audit rows, clusters) is replaced by it. Continue?", default=False):
         raise AbortByUser("Rollback cancelled; nothing was changed.")
-    _restore(ctx, src)
+    _restore(ctx, src, _vault_sealed(ctx) is False)
     ctx.log.ok(f"Orcastra Mini {manifest.get('from_version')} is running again.")
     return 0
 

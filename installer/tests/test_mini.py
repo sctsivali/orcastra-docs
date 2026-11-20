@@ -235,3 +235,67 @@ class BackupRestoreSafety(unittest.TestCase):
             with self.assertRaises(Exception):
                 B.restore_files(ctx, src)
             self.assertFalse(os.path.exists(os.path.join(root, "escape.txt")))
+
+
+class BackupLinkSafety(unittest.TestCase):
+    def _archive(self, root, build):
+        import tarfile
+        src = os.path.join(root, "b")
+        os.makedirs(src)
+        with tarfile.open(os.path.join(src, "files.tar.gz"), "w:gz") as tar:
+            build(tar)
+        return src
+
+    def test_a_link_in_a_backup_is_refused(self):
+        import tarfile
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as root:
+            def build(tar):
+                info = tarfile.TarInfo("config/backend/x")
+                info.type, info.linkname = tarfile.SYMTYPE, "/root"
+                tar.addfile(info)
+            src = self._archive(root, build)
+            ctx = SimpleNamespace(install_dir=os.path.join(root, "install"))
+            os.makedirs(ctx.install_dir)
+            with self.assertRaises(Exception):
+                B.restore_files(ctx, src)
+
+    def test_a_directory_swapped_for_a_link_after_the_backup_is_refused(self):
+        import io
+        import tarfile
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as root:
+            outside = os.path.join(root, "outside")
+            os.makedirs(outside)
+            def build(tar):
+                data = b"payload"
+                info = tarfile.TarInfo("config/p/.bashrc")
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            src = self._archive(root, build)
+            ctx = SimpleNamespace(install_dir=os.path.join(root, "install"))
+            os.makedirs(os.path.join(ctx.install_dir, "config"))
+            os.symlink(outside, os.path.join(ctx.install_dir, "config", "p"))
+            with self.assertRaises(Exception):
+                B.restore_files(ctx, src)
+            self.assertFalse(os.path.exists(os.path.join(outside, ".bashrc")))
+
+    def test_the_archive_leaves_links_out(self):
+        import tarfile
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as root:
+            install = os.path.join(root, "install")
+            os.makedirs(os.path.join(install, "config", "backend"))
+            with open(os.path.join(install, "config", "backend", "node_metadata.json"), "w") as fh:
+                fh.write("{}")
+            os.symlink("/etc", os.path.join(install, "config", "backend", "planted"))
+            dest = os.path.join(root, "b")
+            os.makedirs(dest)
+            B.archive_files(SimpleNamespace(install_dir=install), dest)
+            with tarfile.open(os.path.join(dest, "files.tar.gz")) as tar:
+                names = tar.getnames()
+            self.assertIn("config/backend/node_metadata.json", names)
+            self.assertNotIn("config/backend/planted", names)

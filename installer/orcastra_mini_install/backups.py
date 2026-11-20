@@ -75,25 +75,44 @@ def dump_database(ctx, dest: str) -> str:
     return target
 
 
+def _regular_only(member: tarfile.TarInfo) -> Optional[tarfile.TarInfo]:
+    # config/backend is written by the backend container: a link planted there must not enter a
+    # backup that root later restores.
+    return member if member.isfile() or member.isdir() else None
+
+
 def archive_files(ctx, dest: str) -> str:
     target = os.path.join(dest, "files.tar.gz")
     with tarfile.open(target, "w:gz") as tar:
         for name in FILES:
             path = os.path.join(ctx.install_dir, name)
-            if os.path.exists(path):
-                tar.add(path, arcname=name)
+            if os.path.exists(path) and not os.path.islink(path):
+                tar.add(path, arcname=name, filter=_regular_only)
     os.chmod(target, 0o600)
     return target
+
+
+def _inside(root: str, name: str) -> bool:
+    real_root = os.path.realpath(root)
+    # realpath also follows links already on disk: a directory swapped for a link to /root after
+    # the backup resolves outside the install dir and is refused.
+    target = os.path.realpath(os.path.join(root, name))
+    return target == real_root or target.startswith(real_root + os.sep)
 
 
 def restore_files(ctx, src: str) -> None:
     archive = os.path.join(src, "files.tar.gz")
     with tarfile.open(archive, "r:gz") as tar:
-        for member in tar.getmembers():
-            # Only the deployment's own files, never a path that climbs out of the install dir.
-            if member.name.startswith("/") or ".." in member.name.split("/"):
+        members = tar.getmembers()
+        for member in members:
+            # Only the deployment's own regular files and directories, never a link, a device, or
+            # a path that lands outside the install dir.
+            if not (member.isfile() or member.isdir()) or not _inside(ctx.install_dir, member.name):
                 raise InstallError(f"refusing to restore {member.name!r} from {archive}")
-        tar.extractall(ctx.install_dir)
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(ctx.install_dir, members=members, filter="data")
+        else:  # Python without extraction filters: the checks above are the filter
+            tar.extractall(ctx.install_dir, members=members)
 
 
 def _volume_exists(ctx, volume: str) -> bool:

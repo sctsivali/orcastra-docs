@@ -30,7 +30,8 @@ def run(ctx):
                  "consider switching to manual unseal once set up.")
     else:
         log.warn("GUIDED Vault mode: unseal keys were shown only once and are NOT stored. "
-                 "After any reboot, unseal Vault before sign-in works:")
+                 "After any reboot Vault starts sealed and no cluster answers until it is unsealed, from "
+                 "Host Health in the dashboard or on this host:")
         print(f"    docker compose -p {ctx.project} -f {ctx.compose_path} exec -e "
               "VAULT_ADDR=http://127.0.0.1:8200 vault vault operator unseal <key>   (x"
               f"{ctx.flags.unseal_threshold})")
@@ -42,8 +43,8 @@ def run(ctx):
         print(f"       close the window:  {ctx.bootstrap_close_path}")
     else:
         print("    1) Import your admin certificate and sign in.")
-    print("    2) Administration -> Identities -> Issue Identity for partners/tenants.")
-    print("    3) Administration -> Audit Log -> Verify integrity.")
+    print("    2) Administration -> Operators -> Issue Certificate for partners and tenants.")
+    print("    3) Administration -> Audit Log -> Verify Integrity.")
     print()
     log.info("Keep .env and any Vault keys out of version control. "
              f"Full install log: {log.log_file}")
