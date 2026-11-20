@@ -144,6 +144,7 @@ nav:
   - Orcastra Mini:
       - mini/index.md
       - Automated Install: mini/automated-install.md
+      - Upgrading: mini/upgrading.md
       - Architecture: mini/architecture.md
       - Quick Start (manual): mini/quick-start.md
       - Certificate Authentication: mini/certificate-auth.md

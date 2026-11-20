@@ -1,7 +1,8 @@
 # Quick Start
 
-This guide deploys Orcastra Mini on a single host by pulling the published container images.
-No source build is required. Commands assume a host reachable at
+This guide deploys Orcastra Mini 1.0.0 on a single host by pulling the published container
+images. No source build is required. The [Automated Install](automated-install.md) runs the same
+steps with one command. Commands assume a host reachable at
 `https://your-host.example.com:6969`.
 
 ## Prerequisites
@@ -38,7 +39,9 @@ Run each command below as-is. It writes the file with its contents in one paste 
 ### `docker-compose.yml`
 
 This Compose file runs the published backend and frontend images alongside PostgreSQL, Redis,
-Vault, and nginx. Only nginx is published to the host.
+Vault, and nginx, plus a small `autoheal` container that restarts the backend, frontend or nginx
+when Docker marks it unhealthy. Only nginx is published to the host, on `HTTPS_BIND` and
+`HTTPS_PORT`.
 
 ```bash
 cat > docker-compose.yml <<'EOF'
@@ -151,9 +154,12 @@ services:
       - ALLOW_PRIVATE_FORWARDED_IPS=true
       - SECRET_KEY=${SECRET_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS}
+      # The address integrators reach: the add-on API document's servers entry and webhook source.
+      - PUBLIC_API_BASE_URL=${NEXTAUTH_URL}
       - ORCASTRA_DOMAIN=${ORCASTRA_DOMAIN:-orcastra.io}
     volumes:
-      - ./config:/app/config:rw
+      # Only config/backend: the rest of config/ (nginx's key, vault.hcl) stays out of the backend.
+      - ./config/backend:/app/config:rw
       - ${UPLOADS_DIR:-/var/orcastra/uploads}:/app/uploads:rw
     networks: [orcastra-mini]
     extra_hosts:
@@ -266,8 +272,10 @@ EOF
 ### `config/nginx/mini.conf`
 
 nginx terminates TLS, requests the client certificate (trust-on-first-use), and forwards the
-verified certificate to the application. The session token is redacted from WebSocket access
-log lines.
+certificate with the proxy secret. It sends certificate sign-in (`/api/v1/auth/`) and WebSocket
+traffic straight to the backend, MCP clients (`/api/v1/mcp`) to the backend without any
+certificate headers, and everything else to the frontend. The single-use tickets in WebSocket
+URLs are kept out of the access log.
 
 ```bash
 mkdir -p config/nginx/certs
@@ -290,9 +298,11 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
-map $http_upgrade $orcastra_upstream {
-    default   http://frontend:2025;
-    websocket http://backend:4050;
+# Only the socket endpoints (paths ending in /ws, or /ws/<name>) go to the backend as WebSockets;
+# an Upgrade header on any other path still reaches the frontend.
+map "$http_upgrade:$uri" $orcastra_upstream {
+    default                                  http://frontend:2025;
+    "~*^websocket:/api/v1/.+/ws(/[^/]+)?$"   http://backend:4050;
 }
 
 # Socket URLs carry a single-use ticket in the query string; keep it out of the access log.
@@ -345,6 +355,7 @@ server {
         proxy_set_header X-SSL-Client-Cert    $ssl_client_escaped_cert;
         proxy_set_header X-SSL-Client-S-DN    $ssl_client_s_dn;
         proxy_set_header X-Auth-Proxy-Secret  "${AUTH_PROXY_SECRET}";
+        proxy_set_header X-Orcastra-Proxy-Auth "";
 
         proxy_set_header Host               $http_host;
         proxy_set_header X-Real-IP          $remote_addr;
@@ -364,6 +375,7 @@ server {
         proxy_set_header X-SSL-Client-Cert    "";
         proxy_set_header X-SSL-Client-S-DN    "";
         proxy_set_header X-Auth-Proxy-Secret  "";
+        proxy_set_header X-Orcastra-Proxy-Auth "";
 
         proxy_set_header Host               $http_host;
         proxy_set_header X-Real-IP          $remote_addr;
@@ -386,6 +398,7 @@ server {
         proxy_set_header X-SSL-Client-Cert   $ssl_client_escaped_cert;
         proxy_set_header X-SSL-Client-S-DN   $ssl_client_s_dn;
         proxy_set_header X-Auth-Proxy-Secret "${AUTH_PROXY_SECRET}";
+        proxy_set_header X-Orcastra-Proxy-Auth "";
 
         # Host with its port, so redirects and sign-in callbacks keep the published port.
         proxy_set_header Host               $http_host;
@@ -431,7 +444,9 @@ EOF
 ### `.env`
 
 Generate each secret with `openssl rand -hex 32`. The PostgreSQL password appears twice: once
-on its own and once inside `DATABASE_URL`.
+on its own and once inside `DATABASE_URL`. `HTTPS_BIND` is the host address nginx listens on and
+`UPLOADS_DIR` the host directory for image and ISO uploads. [Configuration](configuration.md)
+explains every key.
 
 ```bash
 cat > .env <<'EOF'
@@ -510,12 +525,12 @@ a hostname and `IP:` for an address.
     openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
       -keyout config/nginx/certs/server.key \
       -out config/nginx/certs/server.crt \
-      -subj "/CN=192.168.1.50" \
-      -addext "subjectAltName=IP:192.168.1.50"
+      -subj "/CN=192.0.2.50" \
+      -addext "subjectAltName=IP:192.0.2.50"
     ```
 
-    Replace `192.168.1.50` with your host's IP. Use the `IP:` form (not `DNS:`), and set the
-    three `.env` URLs to `https://192.168.1.50:6969`.
+    Replace `192.0.2.50` with your host's IP. Use the `IP:` form (not `DNS:`), and set the
+    three `.env` URLs to `https://192.0.2.50:6969`.
 
 !!! note "Self-signed certificate warning"
     A self-signed certificate makes the browser show a "not secure" warning the first time.
@@ -523,6 +538,18 @@ a hostname and `IP:` for an address.
     sign-in still works, because it does not depend on the server certificate being trusted.
 
 ## 5. Pull the images and start
+
+The backend runs as uid `1000` and writes into `config/backend/` (node display names, recovery
+certificates; mounted at `/app/config`) and into the uploads directory. Create both and give them
+to that uid. Run this in the deployment directory, with your `UPLOADS_DIR` if you changed it:
+
+```bash
+sudo mkdir -p config/backend /var/orcastra/uploads
+sudo chown 1000:1000 config/backend /var/orcastra/uploads && sudo chmod 750 config/backend /var/orcastra/uploads
+```
+
+The rest of `config/` is not mounted into the backend, so `server.key` and the nginx template
+stay root's. Then pull and start:
 
 ```bash
 docker compose pull
@@ -532,7 +559,9 @@ docker compose ps
 
 ## 6. Initialise and unseal Vault
 
-Vault starts sealed. Initialise once, then unseal after every restart (manual, by design).
+Vault starts sealed. Initialise once, then unseal after every restart (manual, by design). Once
+an Administrator exists, they can also unseal Vault from the dashboard
+([Operations](operations.md#vault-unseal-after-a-restart)).
 
 !!! note "Point the CLI at HTTP"
     Vault runs over HTTP on the private Docker network (`tls_disable`), but the `vault` CLI
@@ -597,12 +626,20 @@ openssl pkcs12 -export -inkey admin.key -in admin.crt -out admin.p12   # set a p
 curl -sk https://your-host.example.com:6969/api/v1/auth/cert-bootstrap \
   --cert admin.crt --key admin.key \
   -H 'Content-Type: application/json' \
-  -d '{"bootstrap_token":"<BOOTSTRAP_ADMIN_TOKEN>"}'
+  -d '{"bootstrap_token":"<BOOTSTRAP_ADMIN_TOKEN>","email":"admin@example.com"}'
 ```
 
-`<BOOTSTRAP_ADMIN_TOKEN>` is the same value you set in `.env` in step 3. The commands write
-`admin.crt`, `admin.key`, and `admin.p12` to the current directory; you import `admin.p12` in
-step 8.
+`<BOOTSTRAP_ADMIN_TOKEN>` is the same value you set in `.env` in step 3. Use your own email: it
+is how organizations, keys and the audit log know you, and it cannot be changed later. Without
+`email`, the Administrator gets `admin@users.orcastra.internal` (from `CN=admin`). The commands
+write `admin.crt`, `admin.key`, and `admin.p12` to the current directory; you import `admin.p12`
+in step 8.
+
+!!! tip "Or enroll in the browser"
+    Instead of the `curl`, import `admin.p12` into your browser and open the dashboard. While no
+    Administrator exists and `BOOTSTRAP_ADMIN_TOKEN` is set, the sign-in page shows the
+    certificate's fingerprint and a form for the bootstrap token, an email and a display name.
+    **Enroll as Administrator** enrolls the certificate and signs you in.
 
 !!! note "Server has no public IP"
     Forward the dashboard port over the SSH session you already use, then treat
@@ -639,19 +676,21 @@ backend.
 docker compose up -d backend
 ```
 
-## 8. Sign in and issue the other identities
+## 8. Sign in and issue certificates for the other operators
 
 1. Import the `admin.p12` from step 7 (the file you generated, copied to this machine if it was
    created on the server) into your browser or OS keychain.
 2. Open `https://your-host.example.com:6969` and select the certificate when prompted.
-3. As admin, open **Administration -> Identities -> Issue Identity**. Choose a username, a role
-   (partner or tenant), and a validity period. The Partner/Tenant `.p12` downloads through the
-   browser and its one-time import password is shown once. Deliver both to the user out of
-   band. (This UI download is separate from the `admin.p12` you generated yourself in step 7.)
-4. The user imports that `.p12` and signs in the same way.
+3. As admin, open **Administration > Operators > Issue Certificate**. Enter the operator's email
+   (it cannot be changed later), an optional display name, the role, an optional validity in
+   days, and an organization if the operator belongs to one. The `.p12` downloads through the
+   browser and its import password is shown once. Deliver both to the person through separate
+   channels. (This download is separate from the `admin.p12` you generated yourself in step 7.)
+4. The person imports that `.p12` and signs in the same way.
 
-Revoke, re-activate, or change a role from the same screen. Changes take effect on the
-identity's next request. See [Certificate Authentication](certificate-auth.md) for the full
+Revoke, reactivate, delete, restore, or change a role from the same page. Changes take effect
+on the operator's next request. Issue a second Administrator certificate so that one lost device
+does not lock everyone out. See [Certificate Authentication](certificate-auth.md) for the full
 lifecycle and [Operations](operations.md) for day-2 tasks.
 
 ## Verify the deployment
@@ -662,5 +701,8 @@ docker compose ps    # all services healthy
 
 - Browsing to the host serves the sign-in page over HTTPS.
 - After importing a certificate, the dashboard loads and the role gates the navigation
-  (admins see Administration; partners and tenants see a restricted set).
-- **Administration -> Audit Log -> Verify integrity** reports a valid chain.
+  (Administrators see **Administration > Operators** and **Audit Log**, Partners see
+  **Operators**, and Tenants see neither).
+- **Administration > Audit Log > Verify Integrity** reports an intact chain.
+- **Cluster > Host Health** shows the **Certificate Sign-In** and **Audit Log** checks as healthy
+  once `BOOTSTRAP_ADMIN_TOKEN` is cleared.

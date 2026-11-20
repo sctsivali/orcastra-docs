@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "product": "orcastra-mini",
+  "generated_at": "2026-11-20T00:00:00Z",
+  "releases": [
+    {
+      "version": "1.0.0",
+      "status": "latest",
+      "released": "2026-11-20",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/mini/releases/#1-0-0",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/mini/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard-mini:backend-1.0.0",
+        "frontend": "svlct/orcastra-dashboard-mini:frontend-1.0.0"
+      }
+    },
+    {
+      "version": "1.0.0-RC1",
+      "status": "deprecated",
+      "released": "2026-06-20",
+      "security": false,
+      "notes_url": "https://docs.orcastra.io/en/latest/mini/releases/#1-0-0-rc1",
+      "upgrade_url": "https://docs.orcastra.io/en/latest/mini/upgrading/",
+      "images": {
+        "backend": "svlct/orcastra-dashboard-mini:backend-1.0.0-RC1",
+        "frontend": "svlct/orcastra-dashboard-mini:frontend-1.0.0-RC1"
+      }
+    }
+  ]
+}
