@@ -220,6 +220,10 @@ removes old backups; delete them when you no longer need to roll back.
 - **Existing settings are kept.** An RC1 `.env` keeps `LOCAL_JWT_TTL_SECONDS=3600`; new 1.0.0
   installs use `900`. Lower it if you want the new default. `AUTH_MODE` and
   `NEXT_PUBLIC_AUTH_MODE` stay in the file and are no longer read.
+- **Cluster display names come back.** RC1 could not save display names (its config directory
+  belonged to root), so they were lost at every restart. Once Vault answers, 1.0.0 copies each
+  cluster's display name from its registration; names set later are kept in
+  `config/backend/node_metadata.json`.
 - **Partners see fewer projects.** As in CMP, a Partner now sees each cluster's `default`
   project and the projects named by the tenant policies of the organizations it runs. RC1
   showed a Partner every project on its clusters. An Administrator still sees every project.
