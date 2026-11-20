@@ -150,6 +150,7 @@ nav:
       - Certificate Authentication: mini/certificate-auth.md
       - Configuration: mini/configuration.md
       - Operations & Troubleshooting: mini/operations.md
+      - Releases: mini/releases.md
   - Deployment:
       - deployment/index.md
       - Automated Install: deployment/automated-install.md
