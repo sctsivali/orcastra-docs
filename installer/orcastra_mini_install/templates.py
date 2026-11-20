@@ -18,6 +18,7 @@ _FRONTEND_IMAGE_LINE = "    image: ${MINI_IMAGE_REPO:-svlct/orcastra-dashboard-m
 # defaults like AUTH_MODE) is kept exactly as the docs publish it.
 FILLABLE_ENV_KEYS = (
     "CONTAINER_PREFIX",
+    "COMPOSE_PROJECT_NAME",
     "APP_VERSION",
     "HTTPS_PORT",
     "HTTPS_BIND",

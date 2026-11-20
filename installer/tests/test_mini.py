@@ -299,3 +299,16 @@ class BackupLinkSafety(unittest.TestCase):
                 names = tar.getnames()
             self.assertIn("config/backend/node_metadata.json", names)
             self.assertNotIn("config/backend/planted", names)
+
+
+class ComposeProjectName(unittest.TestCase):
+    def test_an_upgrade_names_the_project_after_this_deployment(self):
+        merged, added, _ = U.merge_env(RC1_ENV, "1.0.0")
+        self.assertIn("COMPOSE_PROJECT_NAME", added)
+        self.assertIn("COMPOSE_PROJECT_NAME=orcastra-mini\n", merged)
+        merged, _, _ = U.merge_env(RC1_ENV.replace("CONTAINER_PREFIX=orcastra-mini", "CONTAINER_PREFIX=site-7"), "1.0.0")
+        self.assertIn("COMPOSE_PROJECT_NAME=site-7\n", merged)
+
+    def test_an_install_writes_the_prefix_as_the_project_name(self):
+        env = T.render_env({"CONTAINER_PREFIX": "site-7", "COMPOSE_PROJECT_NAME": "site-7"})
+        self.assertIn("COMPOSE_PROJECT_NAME=site-7", env)

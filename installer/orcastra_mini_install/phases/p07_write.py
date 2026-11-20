@@ -41,6 +41,7 @@ def _env_values(ctx):
                                               "VAULT_TOKEN") or ""
     return {
         "CONTAINER_PREFIX": c["container_prefix"],
+        "COMPOSE_PROJECT_NAME": c["container_prefix"],
         "APP_VERSION": c["image_tag"],
         "HTTPS_PORT": str(c["https_port"]),
         "HTTPS_BIND": c.get("https_bind") or "0.0.0.0",

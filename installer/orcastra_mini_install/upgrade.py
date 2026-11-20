@@ -149,10 +149,12 @@ def merge_env(old: str, target_version: str):
                 else text.rstrip("\n") + f"\n{key}={secrets.token_hex(32)}\n"
             rotated.append(key)
     present = {k for k, _line in templates._iter_env_lines(text) if k}
+    # Values that follow this deployment rather than the template's default.
+    derived = {"COMPOSE_PROJECT_NAME": templates.get_env_value(text, "CONTAINER_PREFIX") or "orcastra-mini"}
     added = []
     for key, line in templates._iter_env_lines(templates.env_skeleton()):
         if key and key not in present and "<" not in line:
-            added.append(line)
+            added.append(f"{key}={derived[key]}" if key in derived else line)
     if added:
         text = text.rstrip("\n") + f"\n\n# Added by the upgrade to {target_version}\n" + "\n".join(added) + "\n"
     return text, [line.split("=", 1)[0] for line in added], rotated
